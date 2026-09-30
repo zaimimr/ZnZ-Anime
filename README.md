@@ -27,7 +27,7 @@ Tested on a Samsung The Frame (Tizen 6+) at 1920x1080.
 
 ## Install on your TV
 
-You need a computer on the same network as the TV and about 30 minutes. Want help? Give [INSTALL_WITH_AI.md](INSTALL_WITH_AI.md) to an AI coding assistant (Claude Code, Codex, Cursor and so on) and it walks you through every step.
+You need a computer on the same network as the TV and about 30 minutes. Prefer pictures? Follow the [picture guide](docs/INSTALL_GUIDE.md). Want help? Give [INSTALL_WITH_AI.md](INSTALL_WITH_AI.md) to an AI coding assistant (Claude Code, Codex, Cursor and so on) and it walks you through every step.
 
 ### 1. Put the TV in Developer Mode
 
