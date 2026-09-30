@@ -1,9 +1,7 @@
 import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { type Details, details } from '../anilist/api'
-import { getToken } from '../auth/tokens'
-import { AuthError } from '../http'
-import { malProgress } from '../mal/api'
+import { type LibraryEntry, libraryEntry } from '../library'
 import { useRouter } from '../nav/router'
 import { statusLabels, statusOrder } from '../list'
 import { nextEpisode, playTarget } from '../player/logic'
@@ -11,7 +9,7 @@ import { getResume } from '../player/resume'
 import { getSettings, saveSettings } from '../settings'
 import { resolveFirst } from '../sources/registry'
 import type { Episode } from '../sources/types'
-import { removeEverywhere, saveEverywhere } from '../sync/writer'
+import { NotOnMalError, removeEverywhere, saveEverywhere } from '../sync/writer'
 import type { Status } from '../types'
 import { Focusable } from '../ui/Focusable'
 import { Icon } from '../ui/Icon'
@@ -72,12 +70,12 @@ function StatusMenu({ current, onPick }: { current?: Status; onPick: (status: St
 }
 
 export function DetailsScreen({ id }: { id: number }) {
-  const { push, replace } = useRouter()
+  const { push } = useRouter()
   const [info, setInfo] = useState<Details | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [source, setSource] = useState<SourceState>({ state: 'loading' })
-  const [malWatched, setMalWatched] = useState(0)
+  const [entry, setEntry] = useState<LibraryEntry>({ progress: 0, score: 0 })
   const [lang, setLang] = useState(getSettings().lang)
   const [menu, setMenu] = useState(false)
   const [notice, setNotice] = useState('')
@@ -106,13 +104,11 @@ export function DetailsScreen({ id }: { id: number }) {
       .then((d) => {
         setInfo(d)
         loadSource(d)
-        if (d.idMal && getToken('mal')) malProgress(d.idMal).then(setMalWatched).catch(() => undefined)
+        setEntry({ status: d.listStatus, progress: d.progress, score: d.score, listId: d.listId })
+        libraryEntry(d).then(setEntry).catch(() => undefined)
       })
-      .catch((e) => {
-        if (e instanceof AuthError) replace({ name: 'pair', provider: e.provider, next: 'home' })
-        else setFailed(true)
-      })
-  }, [id, loadSource, replace, attempt])
+      .catch(() => setFailed(true))
+  }, [id, loadSource, attempt])
 
   const toggleLang = () => {
     const next = lang === 'sub' ? 'dub' : 'sub'
@@ -128,20 +124,19 @@ export function DetailsScreen({ id }: { id: number }) {
   const setStatus = async (status: Status | null) => {
     if (!info) return
     closeMenu()
-    const watched = Math.max(info.progress, malWatched)
     try {
       if (status === null) {
-        await removeEverywhere(info.listId, info.idMal)
-        setInfo({ ...info, listStatus: undefined, listId: undefined })
+        await removeEverywhere(info.id, entry.listId, info.idMal)
+        setEntry({ progress: 0, score: 0 })
         setNotice('Removed from your list')
       } else {
-        const progress = status === 'completed' ? (info.episodes ?? watched) : watched
-        await saveEverywhere({ anilistId: info.id, malId: info.idMal, status, progress, score: info.score })
-        setInfo({ ...info, listStatus: status, progress })
+        const progress = status === 'completed' ? (info.episodes ?? entry.progress) : entry.progress
+        await saveEverywhere({ anilistId: info.id, malId: info.idMal, status, progress, score: entry.score })
+        setEntry({ ...entry, status, progress })
         setNotice(`Moved to ${statusLabels[status]}`)
       }
-    } catch {
-      setNotice('Could not update your list. It will retry when the app starts.')
+    } catch (e) {
+      setNotice(e instanceof NotOnMalError ? e.message : 'Could not update your list. It will retry when the app starts.')
     }
   }
 
@@ -162,7 +157,7 @@ export function DetailsScreen({ id }: { id: number }) {
 
   if (!info) return <div className="screen center muted">Loading...</div>
 
-  const watched = Math.max(info.progress, malWatched)
+  const watched = entry.progress
   const available = source.state === 'ready' ? source.episodes.length : undefined
   const total = info.episodes ?? available
   const firstTarget = playTarget(watched, available, info.episodes)
@@ -175,18 +170,20 @@ export function DetailsScreen({ id }: { id: number }) {
       <div style={{ maxWidth: 1100, marginBottom: 40 }}>
         <h1 style={{ margin: '0 0 12px', fontSize: 64 }}>{info.title}</h1>
         <p className="muted">
-          {[info.episodes ? `${info.episodes} episodes` : 'Ongoing', info.listStatus && statusLabels[info.listStatus], watched > 0 && `Watched ${watched}${total ? ` of ${total}` : ''}`].filter(Boolean).join(' · ')}
+          {[info.status === 'NOT_YET_RELEASED' ? 'Not aired yet' : info.episodes ? `${info.episodes} episodes` : 'Ongoing', entry.status && statusLabels[entry.status], watched > 0 && `Watched ${watched}${total ? ` of ${total}` : ''}`].filter(Boolean).join(' · ')}
         </p>
         <p style={{ fontSize: 24, lineHeight: 1.4, maxHeight: 136, overflow: 'hidden' }}>{info.description}</p>
         <div style={{ display: 'flex', gap: 16 }}>
-          <Focusable className="btn play" autoFocus onEnter={() => push({ name: 'player', id: info.id, ep: target })}>
-            <Icon name="play" size={26} /> {getResume(info.id, target) > 0 ? 'Resume' : 'Play'} episode {target}
-          </Focusable>
-          <div className="menu-anchor">
-            <Focusable focusKey="status-btn" className="btn with-icon" onEnter={() => setMenu(true)}>
-              {info.listStatus ? statusLabels[info.listStatus] : 'Add to list'} <Icon name="down" size={22} />
+          {source.state !== 'none' && (
+            <Focusable className="btn play" autoFocus onEnter={() => push({ name: 'player', id: info.id, ep: target })}>
+              <Icon name="play" size={26} /> {getResume(info.id, target) > 0 ? 'Resume' : 'Play'} episode {target}
             </Focusable>
-            {menu && <StatusMenu current={info.listStatus} onPick={(st) => void (st === info.listStatus ? closeMenu() : setStatus(st))} />}
+          )}
+          <div className="menu-anchor">
+            <Focusable focusKey="status-btn" className="btn with-icon" autoFocus={source.state === 'none'} onEnter={() => setMenu(true)}>
+              {entry.status ? statusLabels[entry.status] : 'Add to list'} <Icon name="down" size={22} />
+            </Focusable>
+            {menu && <StatusMenu current={entry.status} onPick={(st) => void (st === entry.status ? closeMenu() : setStatus(st))} />}
           </div>
           <Focusable className="btn" onEnter={toggleLang}>Audio: {lang === 'sub' ? 'Japanese' : 'English'}</Focusable>
         </div>
@@ -195,7 +192,7 @@ export function DetailsScreen({ id }: { id: number }) {
       {source.state === 'loading' && <p className="muted">Finding episodes...</p>}
       {source.state === 'none' && (
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-          <p>No source available.</p>
+          <p>{info.status === 'NOT_YET_RELEASED' ? 'This show has not aired yet.' : 'No streams found for this show right now.'}</p>
           <Focusable className="btn" onEnter={() => loadSource(info)}>Retry</Focusable>
         </div>
       )}

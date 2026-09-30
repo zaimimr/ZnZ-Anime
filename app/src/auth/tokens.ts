@@ -20,14 +20,19 @@ export function clearToken(provider: Provider): void {
   localStorage.removeItem(key(provider))
 }
 
+export function expire(provider: Provider): AuthError {
+  if (getToken(provider)) {
+    clearToken(provider)
+    window.dispatchEvent(new CustomEvent<Provider>('znz:expired', { detail: provider }))
+  }
+  return new AuthError(provider)
+}
+
 export async function validToken(provider: Provider): Promise<string> {
   const tokens = getToken(provider)
   if (!tokens) throw new AuthError(provider)
   if (tokens.expiresAt - Date.now() > 60_000) return tokens.accessToken
-  if (provider === 'anilist' || !tokens.refreshToken) {
-    clearToken(provider)
-    throw new AuthError(provider)
-  }
+  if (provider === 'anilist' || !tokens.refreshToken) throw expire(provider)
   try {
     const res = await request(`${hosts.auth}/refresh/mal`, {
       method: 'POST',
@@ -39,7 +44,6 @@ export async function validToken(provider: Provider): Promise<string> {
     return fresh.accessToken
   } catch (e) {
     if (!(e instanceof HttpError) || e.status !== 401) throw e
-    clearToken('mal')
-    throw new AuthError('mal')
+    throw expire('mal')
   }
 }

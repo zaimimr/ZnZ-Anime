@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchList, recommendations, season } from '../anilist/api'
-import { AuthError } from '../http'
+import { recommendations, season } from '../anilist/api'
+import { fetchLibrary } from '../library'
 import { newEpisodes, progressLabel } from '../list'
 import { useRouter } from '../nav/router'
 import { type TrendWindow, topTrending } from '../trending'
@@ -11,7 +11,7 @@ import { PosterRow } from '../ui/PosterRow'
 const windowLabels: Record<TrendWindow, string> = { day: 'Day', week: 'Week', month: 'Month' }
 
 export function Home() {
-  const { push, replace } = useRouter()
+  const { push } = useRouter()
   const [list, setList] = useState<ListItem[]>([])
   const [airing, setAiring] = useState<Card[]>([])
   const [trendWindow, setTrendWindow] = useState<TrendWindow>('day')
@@ -19,13 +19,10 @@ export function Home() {
   const [offline, setOffline] = useState(false)
   const [because, setBecause] = useState<{ title: string; cards: Card[] } | null>(null)
 
-  const fail = (e: unknown) => {
-    if (e instanceof AuthError) replace({ name: 'pair', provider: e.provider, next: 'home' })
-    else setOffline(true)
-  }
+  const fail = () => setOffline(true)
 
   useEffect(() => {
-    fetchList().then(setList).catch(fail)
+    fetchLibrary().then(setList).catch(fail)
     season().then(setAiring).catch(fail)
   }, [])
 

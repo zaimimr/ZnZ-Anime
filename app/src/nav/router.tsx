@@ -11,11 +11,13 @@ export type Route =
   | { name: 'player'; id: number; ep: number }
   | { name: 'settings' }
   | { name: 'pair'; provider: Provider; next: 'home' | 'settings' }
+  | { name: 'welcome' }
 
 interface RouterValue {
   route: Route
   push(route: Route): void
   replace(route: Route): void
+  reset(route: Route): void
   back(): void
   setBackHandler(fn: (() => boolean) | null): void
 }
@@ -27,6 +29,7 @@ export function RouterProvider({ initial, children }: { initial: Route; children
   const backHandler = useRef<(() => boolean) | null>(null)
   const push = useCallback((route: Route) => setStack((s) => [...s, route]), [])
   const replace = useCallback((route: Route) => setStack((s) => [...s.slice(0, -1), route]), [])
+  const reset = useCallback((route: Route) => setStack([route]), [])
   const back = useCallback(() => {
     if (backHandler.current?.()) return
     setStack((s) => {
@@ -48,7 +51,7 @@ export function RouterProvider({ initial, children }: { initial: Route; children
     return () => window.removeEventListener('keydown', onKey)
   }, [back])
 
-  const value = useMemo(() => ({ route: stack[stack.length - 1], push, replace, back, setBackHandler }), [stack, push, replace, back, setBackHandler])
+  const value = useMemo(() => ({ route: stack[stack.length - 1], push, replace, reset, back, setBackHandler }), [stack, push, replace, reset, back, setBackHandler])
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>
 }
 

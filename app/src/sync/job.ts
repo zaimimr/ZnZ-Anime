@@ -1,7 +1,9 @@
 import { anilistIdsForMal, fetchList, saveEntry } from '../anilist/api'
 import { fetchMalList, saveMalEntry } from '../mal/api'
 import type { ListEntry } from '../types'
+import { clearLocal, readLocal } from '../library'
 import { type MergePlan, planMerge } from './merge'
+import { saveEverywhere } from './writer'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -41,4 +43,15 @@ export function readUnmatched(): ListEntry[] {
 
 export function isMerged(): boolean {
   return localStorage.getItem('znz.merged') === '1'
+}
+
+export async function copyLocalList(onProgress: (done: number, total: number) => void, delayMs = 700): Promise<void> {
+  const entries = readLocal()
+  let done = 0
+  for (const e of entries) {
+    await saveEverywhere({ anilistId: e.anilistId, malId: e.malId, status: e.status, progress: e.progress, score: e.score })
+    onProgress(++done, entries.length)
+    await sleep(delayMs)
+  }
+  clearLocal()
 }

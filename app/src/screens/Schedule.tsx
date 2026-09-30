@@ -1,31 +1,26 @@
 import { useEffect, useState } from 'react'
-import { fetchList, type ScheduleItem, schedule } from '../anilist/api'
-import { AuthError } from '../http'
+import { type ScheduleItem, schedule } from '../anilist/api'
+import { fetchLibrary } from '../library'
 import { clock, dayName } from '../list'
-import { useRouter } from '../nav/router'
 import type { ListItem } from '../types'
 import { PosterRow } from '../ui/PosterRow'
 
 export function Schedule() {
-  const { replace } = useRouter()
   const [items, setItems] = useState<ScheduleItem[] | null>(null)
   const [list, setList] = useState<ListItem[]>([])
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     const from = new Date().setHours(0, 0, 0, 0)
-    fetchList()
+    fetchLibrary()
       .then((l) => {
         setList(l)
         const ids = l.filter((i) => i.entry.status === 'watching' || i.entry.status === 'planning').map((i) => i.card.id)
         return schedule(ids, from, from + 7 * 86_400_000)
       })
       .then(setItems)
-      .catch((e) => {
-        if (e instanceof AuthError) replace({ name: 'pair', provider: e.provider, next: 'home' })
-        else setFailed(true)
-      })
-  }, [replace])
+      .catch(() => setFailed(true))
+  }, [])
 
   const days = new Map<string, ScheduleItem[]>()
   for (const item of items ?? []) {

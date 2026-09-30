@@ -7,10 +7,11 @@ export interface Settings {
   autoSkipOutro: boolean
   autoplayNext: boolean
   skipFiller: boolean
+  syncBoth: boolean
 }
 
 const KEY = 'znz.settings'
-const defaults: Settings = { sourceOrder: ['miruro'], lang: 'sub', autoSkipIntro: true, autoSkipOutro: true, autoplayNext: true, skipFiller: false }
+const defaults: Settings = { sourceOrder: ['miruro'], lang: 'sub', autoSkipIntro: true, autoSkipOutro: true, autoplayNext: true, skipFiller: false, syncBoth: true }
 
 export function getSettings(): Settings {
   try {

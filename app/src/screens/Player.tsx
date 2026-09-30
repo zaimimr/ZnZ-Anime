@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
 import { aniskip, mergeSkips } from '../aniskip'
-import { AuthError } from '../http'
+import { type LibraryEntry, libraryEntry } from '../library'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
@@ -24,6 +24,7 @@ interface Loaded {
   lang: Lang
   total: number
   episodes: Episode[]
+  entry: LibraryEntry
 }
 
 interface Option {
@@ -107,7 +108,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const load = useCallback(async (skipAdapters: string[]): Promise<void> => {
     const info = await details(id)
-    const found = await resolveFirst({ anilistId: id, titles: info.titles }, skipAdapters)
+    const [found, entry] = await Promise.all([
+      resolveFirst({ anilistId: id, titles: info.titles }, skipAdapters),
+      libraryEntry(info).catch((): LibraryEntry => ({ status: info.listStatus, progress: info.progress, score: info.score })),
+    ])
     if (!found) return setError('No source available.')
     triedAdapters.current = [...skipAdapters, found.adapter.id]
     const wanted = getSettings().lang
@@ -115,7 +119,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!streams.length) return load(triedAdapters.current)
     if (lang !== wanted) setBadge(`${wanted.toUpperCase()} not available, playing ${lang.toUpperCase()}`)
     setIndex(0)
-    setLoaded({ info, adapter: found.adapter, show: found.show, streams, lang, total: info.episodes ?? found.episodes.length, episodes: found.episodes })
+    setLoaded({ info, adapter: found.adapter, show: found.show, streams, lang, total: info.episodes ?? found.episodes.length, episodes: found.episodes, entry })
   }, [id, ep])
 
   useEffect(() => {
@@ -192,11 +196,9 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   }, [id, ep])
 
   const markWatched = useCallback(() => {
-    if (!loaded || marked.current || ep <= loaded.info.progress) return
+    if (!loaded || marked.current || ep <= loaded.entry.progress) return
     marked.current = true
-    void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes), progress: ep, score: loaded.info.score }).catch((e) => {
-      if (e instanceof AuthError) setBadge(`${e.provider === 'mal' ? 'MAL' : 'AniList'} login expired. Link it again in Settings.`)
-    })
+    void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes), progress: ep, score: loaded.entry.score }).catch(() => undefined)
   }, [loaded, id, ep])
 
   const next = useMemo(() => {

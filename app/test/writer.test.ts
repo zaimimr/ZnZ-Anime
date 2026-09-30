@@ -8,7 +8,8 @@ import { setToken } from '../src/auth/tokens'
 import { AuthError } from '../src/http'
 import { saveMalEntry } from '../src/mal/api'
 import { enqueue, readQueue } from '../src/sync/queue'
-import { flushQueue, saveEverywhere } from '../src/sync/writer'
+import { readLocal } from '../src/library'
+import { flushQueue, NotOnMalError, removeEverywhere, saveEverywhere } from '../src/sync/writer'
 
 const change = (malId: number, progress: number) => ({ anilistId: malId + 1, malId, status: 'watching' as const, progress, score: 0 })
 const targets = () => readQueue().map((i) => [i.target, i.change.malId, i.change.progress])
@@ -17,6 +18,7 @@ beforeEach(() => {
   localStorage.clear()
   vi.mocked(saveEntry).mockReset().mockResolvedValue()
   vi.mocked(saveMalEntry).mockReset().mockResolvedValue()
+  setToken('anilist', { accessToken: 'A', expiresAt: Date.now() + 1e9 })
   setToken('mal', { accessToken: 'M', expiresAt: Date.now() + 1e9 })
 })
 
@@ -57,6 +59,31 @@ describe('saveEverywhere', () => {
     await saveEverywhere(change(1, 2))
     expect(saveMalEntry).toHaveBeenCalled()
     expect(targets()).toEqual([['anilist', 1, 2]])
+  })
+
+  it('writes only the main list when syncing both is off', async () => {
+    localStorage.setItem('znz.settings', JSON.stringify({ syncBoth: false }))
+    await saveEverywhere(change(1, 2))
+    expect(saveEntry).toHaveBeenCalled()
+    expect(saveMalEntry).not.toHaveBeenCalled()
+  })
+
+  it('writes to MAL alone when only MAL is linked', async () => {
+    localStorage.removeItem('znz.tokens.anilist')
+    await saveEverywhere(change(1, 2))
+    expect(saveEntry).not.toHaveBeenCalled()
+    expect(saveMalEntry).toHaveBeenCalled()
+    await expect(saveEverywhere({ anilistId: 5, status: 'watching', progress: 1, score: 0 })).rejects.toBeInstanceOf(NotOnMalError)
+  })
+
+  it('keeps the list on this TV when no account is linked', async () => {
+    localStorage.clear()
+    await saveEverywhere(change(1, 2))
+    await saveEverywhere(change(1, 3))
+    expect(saveEntry).not.toHaveBeenCalled()
+    expect(readLocal()).toMatchObject([{ anilistId: 2, malId: 1, progress: 3, status: 'watching' }])
+    await removeEverywhere(2, undefined, 1)
+    expect(readLocal()).toEqual([])
   })
 
   it('queues and rethrows when MAL login is revoked', async () => {

@@ -1,4 +1,4 @@
-import { clearToken, validToken } from '../auth/tokens'
+import { expire, validToken } from '../auth/tokens'
 import { hosts } from '../hosts'
 import { AuthError, request } from '../http'
 import type { Change, ListEntry, Status } from '../types'
@@ -17,8 +17,7 @@ async function malRequest(url: string, init: RequestInit = {}): Promise<Response
   try {
     return await request(url, { ...init, headers: { ...(init.headers as Record<string, string>), ...(await authHeaders()) } }, { provider: 'mal' })
   } catch (e) {
-    if (e instanceof AuthError) clearToken('mal')
-    throw e
+    throw e instanceof AuthError ? expire('mal') : e
   }
 }
 
@@ -31,19 +30,25 @@ export async function fetchMalList(): Promise<ListEntry[]> {
   let url: string | undefined = `${hosts.mal}/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true`
   while (url) {
     const res = await malRequest(url)
-    const body = (await res.json()) as { data: { node: { id: number; title: string }; list_status: { status: string; num_episodes_watched: number; score: number } }[]; paging: { next?: string } }
+    const body = (await res.json()) as { data: { node: { id: number; title: string }; list_status: { status: string; num_episodes_watched: number; score: number; updated_at?: string } }[]; paging: { next?: string } }
     for (const item of body.data) {
-      entries.push({ malId: item.node.id, title: item.node.title, status: fromMal(item.list_status.status), progress: item.list_status.num_episodes_watched, score: item.list_status.score })
+      entries.push({ malId: item.node.id, title: item.node.title, status: fromMal(item.list_status.status), progress: item.list_status.num_episodes_watched, score: item.list_status.score, ...(item.list_status.updated_at ? { updatedAt: Date.parse(item.list_status.updated_at) } : {}) })
     }
     url = body.paging.next?.replace('https://api.myanimelist.net', hosts.mal)
   }
   return entries
 }
 
-export async function malProgress(malId: number): Promise<number> {
+export async function malEntry(malId: number): Promise<{ status?: Status; progress: number; score: number }> {
   const res = await malRequest(`${hosts.mal}/v2/anime/${malId}?fields=my_list_status`)
-  const body = (await res.json()) as { my_list_status?: { num_episodes_watched: number } }
-  return body.my_list_status?.num_episodes_watched ?? 0
+  const body = (await res.json()) as { my_list_status?: { status: string; num_episodes_watched: number; score: number } }
+  const mine = body.my_list_status
+  return mine ? { status: fromMal(mine.status), progress: mine.num_episodes_watched, score: mine.score } : { progress: 0, score: 0 }
+}
+
+export async function malViewer(): Promise<{ name: string }> {
+  const res = await malRequest(`${hosts.mal}/v2/users/@me`)
+  return (await res.json()) as { name: string }
 }
 
 export async function deleteMalEntry(malId: number): Promise<void> {

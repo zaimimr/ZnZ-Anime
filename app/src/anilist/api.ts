@@ -1,4 +1,4 @@
-import type { Airing, Card, Change, ListItem, Status } from '../types'
+import type { Airing, Card, Change, ListEntry, ListItem, Status } from '../types'
 import { gql } from './client'
 
 interface MediaNode {
@@ -61,26 +61,43 @@ export async function viewer(): Promise<{ id: number; name: string }> {
   return data.Viewer
 }
 
+type ListMedia = MediaNode & { status?: string; nextAiringEpisode?: { episode: number; airingAt: number } | null }
+
+export function toListItem(media: ListMedia, entry: Omit<ListEntry, 'anilistId' | 'malId' | 'title'>, updatedAt: number, listId?: number): ListItem {
+  const card = toCard(media)
+  const next = media.nextAiringEpisode
+  return {
+    card,
+    ...(listId ? { listId } : {}),
+    aired: next ? next.episode - 1 : media.status === 'FINISHED' ? card.episodes : undefined,
+    ...(next ? { nextAiring: { episode: next.episode, at: next.airingAt * 1000 } } : {}),
+    updatedAt,
+    entry: { anilistId: media.id, malId: card.idMal, title: card.title, status: entry.status, progress: entry.progress, score: entry.score },
+  }
+}
+
 export async function fetchList(): Promise<ListItem[]> {
   const { id } = await viewer()
-  const data = await gql<{ MediaListCollection: { lists: { entries: { id: number; mediaId: number; status: string; progress: number; score: number; updatedAt: number; media: MediaNode & { status?: string; nextAiringEpisode?: { episode: number; airingAt: number } | null } }[] }[] } }>(
-    `query ($userId: Int) { MediaListCollection(userId: $userId, type: ANIME) { lists { entries { id mediaId status progress score(format: POINT_10) updatedAt media { ${CARD} status nextAiringEpisode { episode airingAt } } } } } }`,
+  const data = await gql<{ MediaListCollection: { lists: { entries: { id: number; status: string; progress: number; score: number; updatedAt: number; media: ListMedia }[] }[] } }>(
+    `query ($userId: Int) { MediaListCollection(userId: $userId, type: ANIME) { lists { entries { id status progress score(format: POINT_10) updatedAt media { ${CARD} status nextAiringEpisode { episode airingAt } } } } } }`,
     { userId: id },
   )
   return data.MediaListCollection.lists.flatMap((list) =>
-    list.entries.map((e) => {
-      const card = toCard(e.media)
-      const next = e.media.nextAiringEpisode
-      return {
-        card,
-        listId: e.id,
-        aired: next ? next.episode - 1 : e.media.status === 'FINISHED' ? card.episodes : undefined,
-        ...(next ? { nextAiring: { episode: next.episode, at: next.airingAt * 1000 } } : {}),
-        updatedAt: e.updatedAt * 1000,
-        entry: { anilistId: e.mediaId, malId: card.idMal, title: card.title, status: toStatus(e.status), progress: e.progress, score: e.score },
-      }
-    }),
+    list.entries.map((e) => toListItem(e.media, { status: toStatus(e.status), progress: e.progress, score: e.score }, e.updatedAt * 1000, e.id)),
   )
+}
+
+export async function mediaLookup(by: 'id' | 'idMal', ids: number[]): Promise<Map<number, ListMedia>> {
+  const result = new Map<number, ListMedia>()
+  const unique = [...new Set(ids)]
+  for (let i = 0; i < unique.length; i += 50) {
+    const data = await gql<{ Page: { media: ListMedia[] } }>(
+      `query ($ids: [Int]) { Page(perPage: 50) { media(${by}_in: $ids, type: ANIME) { ${CARD} status nextAiringEpisode { episode airingAt } } } }`,
+      { ids: unique.slice(i, i + 50) },
+    )
+    for (const m of data.Page.media) result.set(by === 'id' ? m.id : m.idMal!, m)
+  }
+  return result
 }
 
 export async function saveEntry(change: Change): Promise<void> {

@@ -85,9 +85,24 @@ describe('anilist api', () => {
     expect(result.items[0].history).toEqual([{ date: 100, trending: 50 }, { date: 50, trending: 20 }])
   })
 
-  it('treats an invalid AniList token as a login problem and clears it', async () => {
+  it('clears an invalid AniList token and retries a read without it', async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) =>
+      new Headers(init.headers).get('authorization')
+        ? Response.json({ data: null, errors: [{ message: 'Invalid token', status: 400 }] }, { status: 400 })
+        : Response.json({ data: { Page: { media: [] } } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const expired = vi.fn()
+    window.addEventListener('znz:expired', expired)
+    await expect(mediaByIds([1])).resolves.toEqual([])
+    window.removeEventListener('znz:expired', expired)
+    expect(getToken('anilist')).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(expired).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws AuthError when a write is rejected for the token', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: null, errors: [{ message: 'Invalid token', status: 400 }] }, { status: 400 })))
-    await expect(mediaByIds([1])).rejects.toBeInstanceOf(AuthError)
+    await expect(saveEntry({ anilistId: 1, status: 'watching', progress: 1, score: 0 })).rejects.toBeInstanceOf(AuthError)
     expect(getToken('anilist')).toBeNull()
   })
 

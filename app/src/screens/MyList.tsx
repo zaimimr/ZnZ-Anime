@@ -1,34 +1,33 @@
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { useEffect, useState } from 'react'
-import { fetchList } from '../anilist/api'
-import { AuthError } from '../http'
+import { fetchLibrary, listSource } from '../library'
 import { progressLabel, statusLabels, statusOrder } from '../list'
 import { useRouter } from '../nav/router'
 import type { ListItem, Status } from '../types'
 import { Focusable } from '../ui/Focusable'
 
+const sourceLabels = { anilist: 'From your AniList account', mal: 'From your MyAnimeList account', local: 'Saved on this TV. Link AniList or MyAnimeList in Settings to keep it online.' }
+
 export function MyList() {
-  const { push, replace } = useRouter()
+  const { push } = useRouter()
   const [items, setItems] = useState<ListItem[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [tab, setTab] = useState<Status>('watching')
   const { ref, focusKey } = useFocusable<unknown, HTMLDivElement>({ focusKey: 'list-grid', saveLastFocusedChild: true })
 
   useEffect(() => {
-    fetchList()
+    fetchLibrary()
       .then(setItems)
-      .catch((e) => {
-        if (e instanceof AuthError) replace({ name: 'pair', provider: e.provider, next: 'home' })
-        else setFailed(true)
-      })
-  }, [replace])
+      .catch(() => setFailed(true))
+  }, [])
 
   const shown = (items ?? []).filter((i) => i.entry.status === tab).sort((a, b) => b.updatedAt - a.updatedAt)
   const count = (s: Status) => (items ?? []).filter((i) => i.entry.status === s).length
 
   return (
     <div className="screen" style={{ overflowY: 'auto' }}>
-      <h1 style={{ margin: '0 0 28px' }}>My list</h1>
+      <h1 style={{ margin: '0 0 8px' }}>My list</h1>
+      <p className="muted" style={{ margin: '0 0 28px' }}>{sourceLabels[listSource()]}</p>
       <div className="tabs">
         {statusOrder.map((s) => (
           <Focusable key={s} className={`tab ${s === tab ? 'active' : ''}`} autoFocus={s === 'watching'} onFocus={() => setTab(s)} onEnter={() => setTab(s)}>
