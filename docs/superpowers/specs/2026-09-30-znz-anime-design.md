@@ -84,7 +84,8 @@ Findings from a browser capture and plain `fetch` tests:
 - Resolve: `GET /anime?q=<title>&limit=5&sort=-popularity`, then pick the result whose `external_ids.anilist` contains the AniList ID. Try romaji, then English, then native title.
 - Episodes: `GET /anime/{id}/episodes?kind=regular&limit=10000`.
 - Play: `GET /anime/{id}/episodes/{n}/play` returns `tracks[]` (`sub`, `dub`, `ssub`), each with `providers[]` (seen: animepahe, aniwaves, kickassanime, anikoto, icarus), each with `servers[]` carrying `headers` and `streams[]` (`url`, `format`, `quality`), plus `subtitles` and `skip_times` when available.
-- Raw stream URLs need the server's `Referer` (403 without it). A TV web app cannot set `Referer` on media requests, so the adapter rewrites stream, segment and subtitle URLs through miruro's own proxy (`s1.keeply.top`), which encodes URL and referer with the public key from `/env2.js`. If that proxy fails, the app falls back to the `znz-auth` `/proxy` route.
+- Raw stream URLs need the server's `Referer` (403 without it). A TV web app cannot set `Referer` on media requests. Miruro's own proxy (`s1.keeply.top`) needs a key from `/env2.js`, which Cloudflare blocks for non-browser clients, so the app does not depend on it. The adapter returns raw URLs plus required headers, and the player sends them through the `znz-auth` `/proxy` route, which adds the `Referer` and rewrites playlist URLs.
+- No miruro or MAL endpoint sends CORS headers. On the TV, `<access origin="*">` in `config.xml` allows the requests. In desktop development, the Vite dev server proxies `/x/miruro` and `/x/mal`.
 - Brittleness: miruro can change any of this at any time. `pnpm check:sources` detects it.
 
 ## Data flow
@@ -148,7 +149,7 @@ Findings from a browser capture and plain `fetch` tests:
 
 - Vitest unit tests: merge rules (table of cases), trending aggregation, retry queue, miruro decoding and parsing against saved fixtures.
 - `pnpm check:sources`: runs each adapter against the live site with a known anime (Frieren, AniList 154587) and reports what broke.
-- Worker: Vitest with `@cloudflare/vitest-pool-workers` for the pairing flow.
+- Worker: plain Vitest against the fetch handler, with an in-memory KV fake and a stubbed `fetch`, for pairing, refresh and proxy.
 - Manual: desktop Chrome at 1920x1080 with arrow keys, then `tizen install` on the TV for a final check.
 
 ## Setup notes
