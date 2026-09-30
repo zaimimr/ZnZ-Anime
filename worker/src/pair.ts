@@ -90,7 +90,7 @@ export async function login(req: Request, env: Env, code: string): Promise<Respo
   return Response.redirect(url.toString(), 302)
 }
 
-async function exchange(record: PairRecord, env: Env, oauthCode: string, redirectUri: string): Promise<Tokens | null> {
+async function exchange(record: PairRecord, env: Env, oauthCode: string, redirectUri: string): Promise<{ tokens: Tokens } | { error: string }> {
   const res =
     record.provider === 'anilist'
       ? await fetch('https://anilist.co/api/v2/oauth/token', {
@@ -116,8 +116,23 @@ async function exchange(record: PairRecord, env: Env, oauthCode: string, redirec
             redirect_uri: redirectUri,
           }).toString(),
         })
-  if (!res.ok) return null
-  return toTokens(await res.json())
+  const text = await res.text()
+  if (!res.ok) {
+    const body = (() => {
+      try {
+        const data = JSON.parse(text) as { error?: string; hint?: string; message?: string }
+        return [data.error, data.hint ?? data.message].filter(Boolean).join(' ')
+      } catch {
+        return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)
+      }
+    })()
+    return { error: `${res.status}: ${body}` }
+  }
+  return { tokens: toTokens(JSON.parse(text)) }
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 }
 
 function page(message: string, status = 200): Response {
@@ -131,9 +146,12 @@ export async function callback(req: Request, env: Env, provider: string): Promis
   const oauthCode = url.searchParams.get('code')
   const record = await readPair(env, code)
   if (!record || record.provider !== provider || !oauthCode) return page('Code expired. Start again on the TV.', 404)
-  const tokens = await exchange(record, env, oauthCode, `${url.origin}/callback/${provider}`)
-  if (!tokens) return page('Login failed. Start again on the TV.', 502)
-  await env.PAIRS.put(`pair:${code}`, JSON.stringify({ ...record, tokens }), { expirationTtl: DONE_TTL })
+  const result = await exchange(record, env, oauthCode, `${url.origin}/callback/${provider}`)
+  if ('error' in result) {
+    console.log(`exchange failed for ${provider}: ${result.error}`)
+    return page(`Login failed. Start again on the TV.<p style="opacity:.6">${escapeHtml(result.error)}</p>`, 502)
+  }
+  await env.PAIRS.put(`pair:${code}`, JSON.stringify({ ...record, tokens: result.tokens }), { expirationTtl: DONE_TTL })
   return page('Done. Look at your TV.')
 }
 

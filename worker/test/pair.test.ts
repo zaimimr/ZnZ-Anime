@@ -84,6 +84,14 @@ describe('pairing', () => {
     expect(form.get('client_secret')).toBe('mal-secret')
   })
 
+  it('shows the provider error when the exchange fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'invalid_request', hint: 'Cannot decrypt the authorization code' }, { status: 400 })))
+    const { code } = await startPair('anilist')
+    const res = await call(`/callback/anilist?code=c&state=${code}`)
+    expect(res.status).toBe(502)
+    expect(await res.text()).toContain('400: invalid_request Cannot decrypt the authorization code')
+  })
+
   it('returns 404 for a callback with an unknown state', async () => {
     expect((await call('/callback/anilist?code=c&state=NOPE22')).status).toBe(404)
   })
