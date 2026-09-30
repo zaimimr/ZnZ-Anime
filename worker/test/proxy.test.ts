@@ -87,6 +87,22 @@ describe('/proxy', () => {
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes)
   })
 
+  it('refuses to relay html pages', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>phish</html>', { headers: { 'content-type': 'text/html; charset=utf-8' } })))
+    const u = b64urlEncode('https://evil.test/page')
+    const res = await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
+    expect(res.status).toBe(502)
+    expect(await res.text()).not.toContain('phish')
+  })
+
+  it('marks proxied responses as sandboxed and not sniffable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { headers: { 'content-type': 'video/mp2t' } })))
+    const u = b64urlEncode('https://cdn.test/a/seg.ts')
+    const res = await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(res.headers.get('content-security-policy')).toBe('sandbox')
+  })
+
   it('rejects missing or non-http targets', async () => {
     expect((await worker.fetch(new Request('https://auth.test/proxy'), env)).status).toBe(400)
     const u = b64urlEncode('file:///etc/passwd')

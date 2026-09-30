@@ -101,6 +101,12 @@ describe('pairing', () => {
     expect(res.status).toBe(401)
   })
 
+  it('reports a MAL outage during refresh as 502, not a rejected login', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })))
+    const res = await call('/refresh/mal', { method: 'POST', body: JSON.stringify({ refreshToken: 'R1' }) })
+    expect(res.status).toBe(502)
+  })
+
   it('answers CORS preflight', async () => {
     const res = await call('/pair', { method: 'OPTIONS' })
     expect(res.status).toBe(204)

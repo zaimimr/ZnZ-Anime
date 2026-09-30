@@ -1,8 +1,17 @@
 import type { Change } from '../types'
 
+export type Target = 'anilist' | 'mal'
+
+export interface QueueItem {
+  target: Target
+  change: Change
+}
+
 const KEY = 'znz.retry'
 
-export function readQueue(): Change[] {
+const idOf = (item: QueueItem) => `${item.target}:${item.target === 'mal' ? item.change.malId : item.change.anilistId}`
+
+export function readQueue(): QueueItem[] {
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? '[]')
   } catch {
@@ -10,14 +19,15 @@ export function readQueue(): Change[] {
   }
 }
 
-function writeQueue(items: Change[]): void {
+function writeQueue(items: QueueItem[]): void {
   localStorage.setItem(KEY, JSON.stringify(items))
 }
 
-export function enqueue(change: Change): void {
-  writeQueue([...readQueue().filter((c) => c.malId !== change.malId), change])
+export function enqueue(target: Target, change: Change): void {
+  const item = { target, change }
+  writeQueue([...readQueue().filter((i) => idOf(i) !== idOf(item)), item])
 }
 
-export function removeFromQueue(malId: number): void {
-  writeQueue(readQueue().filter((c) => c.malId !== malId))
+export function removeFromQueue(item: QueueItem): void {
+  writeQueue(readQueue().filter((i) => idOf(i) !== idOf(item)))
 }

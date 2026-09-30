@@ -69,7 +69,8 @@ export async function proxy(req: Request): Promise<Response> {
   const range = req.headers.get('range')
   if (range) headers.set('range', range)
   const upstream = await fetch(target, { headers })
-  const outHeaders = new Headers(cors)
+  if (/text\/html/i.test(upstream.headers.get('content-type') ?? '')) return json({ error: 'upstream returned html', status: upstream.status }, 502)
+  const outHeaders = new Headers({ ...cors, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' })
   for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
     const value = upstream.headers.get(name)
     if (value) outHeaders.set(name, value)

@@ -1,9 +1,10 @@
-import Hls from 'hls.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
+import { AuthError } from '../http'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
-import { activeSkip, nextStreamIndex, shouldMarkWatched, statusAfter } from '../player/logic'
+import { attachStream } from '../player/attach'
+import { activeSkip, nextStreamIndex, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
 import { playableUrl } from '../player/proxy'
 import { clearResume, getResume, setResume } from '../player/resume'
 import { getSettings } from '../settings'
@@ -26,7 +27,6 @@ const format = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)
 export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const { back, replace, setBackHandler } = useRouter()
   const video = useRef<HTMLVideoElement>(null)
-  const hls = useRef<Hls | null>(null)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [index, setIndex] = useState(0)
   const [error, setError] = useState('')
@@ -36,7 +36,6 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [countdown, setCountdown] = useState<number | null>(null)
   const marked = useRef(false)
   const startAt = useRef(getResume(id, ep))
-  const recoveries = useRef(0)
   const triedAdapters = useRef<string[]>([])
 
   const load = useCallback(async (skipAdapters: string[]): Promise<void> => {
@@ -59,7 +58,6 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const nextStream = useCallback((skipProvider = false) => {
     if (!loaded) return
     startAt.current = video.current?.currentTime || startAt.current
-    recoveries.current = 0
     const next = nextStreamIndex(loaded.streams, index, skipProvider)
     if (next >= 0) setIndex(next)
     else load(triedAdapters.current).catch(() => setError('No source available.'))
@@ -69,33 +67,9 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const stream = loaded?.streams[index]
     const el = video.current
     if (!stream || !el) return
-    const url = playableUrl(stream.url, stream.headers)
-    hls.current?.destroy()
-    hls.current = null
-    if (stream.format === 'hls' && Hls.isSupported()) {
-      const instance = new Hls({ maxBufferLength: 60 })
-      instance.on(Hls.Events.ERROR, (_, data) => {
-        if (!data.fatal) return
-        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && recoveries.current < 3) {
-          recoveries.current++
-          instance.recoverMediaError()
-        } else {
-          const blocked = data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR || data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR
-          nextStream(blocked)
-        }
-      })
-      instance.loadSource(url)
-      instance.attachMedia(el)
-      hls.current = instance
-    } else {
-      el.src = url
-    }
-    el.onerror = () => nextStream()
+    const detach = attachStream(el, playableUrl(stream.url, stream.headers), stream.format, nextStream)
     void el.play().catch(() => undefined)
-    return () => {
-      hls.current?.destroy()
-      hls.current = null
-    }
+    return detach
   }, [loaded, index, nextStream])
 
   useEffect(() => {
@@ -113,7 +87,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   useEffect(() => {
     const timer = setInterval(() => {
       const el = video.current
-      if (el && el.currentTime > 0) setResume(id, ep, el.currentTime)
+      if (el && shouldSaveResume(el)) setResume(id, ep, el.currentTime)
     }, 5000)
     return () => clearInterval(timer)
   }, [id, ep])
@@ -172,8 +146,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     setTime({ now: el.currentTime, total: el.duration || 0 })
     if (!marked.current && shouldMarkWatched(el.currentTime, el.duration) && ep > loaded.info.progress) {
       marked.current = true
-      void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes), progress: ep, score: loaded.info.score }).catch(() => {
-        marked.current = false
+      void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes), progress: ep, score: loaded.info.score }).catch((e) => {
+        if (e instanceof AuthError) setBadge(`${e.provider === 'mal' ? 'MAL' : 'AniList'} login expired. Link it again in Settings.`)
       })
     }
   }

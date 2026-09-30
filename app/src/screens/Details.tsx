@@ -17,6 +17,8 @@ const statusLabels: Record<Status, string> = { watching: 'Watching', completed: 
 export function DetailsScreen({ id }: { id: number }) {
   const { push, replace } = useRouter()
   const [info, setInfo] = useState<Details | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const [source, setSource] = useState<SourceState>({ state: 'loading' })
   const [lang, setLang] = useState(getSettings().lang)
   const { ref, focusKey } = useFocusable<unknown, HTMLDivElement>({ focusKey: 'episodes' })
@@ -29,13 +31,17 @@ export function DetailsScreen({ id }: { id: number }) {
   }, [])
 
   useEffect(() => {
+    setFailed(false)
     details(id)
       .then((d) => {
         setInfo(d)
         loadSource(d)
       })
-      .catch((e) => e instanceof AuthError && replace({ name: 'pair', provider: e.provider, next: 'home' }))
-  }, [id, loadSource, replace])
+      .catch((e) => {
+        if (e instanceof AuthError) replace({ name: 'pair', provider: e.provider, next: 'home' })
+        else setFailed(true)
+      })
+  }, [id, loadSource, replace, attempt])
 
   const toggleLang = () => {
     const next = lang === 'sub' ? 'dub' : 'sub'
@@ -47,6 +53,15 @@ export function DetailsScreen({ id }: { id: number }) {
     if (!info) return
     await saveEverywhere({ anilistId: info.id, malId: info.idMal, status: 'planning', progress: info.progress, score: info.score })
     setInfo({ ...info, listStatus: 'planning' })
+  }
+
+  if (failed) {
+    return (
+      <div className="screen center">
+        <p>Could not load this anime.</p>
+        <Focusable className="btn" autoFocus onEnter={() => setAttempt((a) => a + 1)}>Retry</Focusable>
+      </div>
+    )
   }
 
   if (!info) return <div className="screen center muted">Loading...</div>

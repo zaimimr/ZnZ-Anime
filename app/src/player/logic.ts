@@ -20,3 +20,7 @@ export function nextStreamIndex(streams: Stream[], current: number, skipProvider
   }
   return -1
 }
+
+export function shouldSaveResume(el: { currentTime: number; ended: boolean }): boolean {
+  return el.currentTime > 0 && !el.ended
+}

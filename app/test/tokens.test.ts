@@ -25,6 +25,14 @@ describe('tokens', () => {
     expect(getToken('mal')?.refreshToken).toBe('R2')
   })
 
+  it('keeps the MAL token when refresh fails because MAL is down', async () => {
+    setToken('mal', { accessToken: 'old', refreshToken: 'R', expiresAt: Date.now() - 1 })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 502 })))
+    const error = await validToken('mal').catch((e) => e)
+    expect(error).not.toBeInstanceOf(AuthError)
+    expect(getToken('mal')?.refreshToken).toBe('R')
+  })
+
   it('clears MAL and throws AuthError when refresh fails', async () => {
     setToken('mal', { accessToken: 'old', refreshToken: 'R', expiresAt: Date.now() - 1 })
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })))

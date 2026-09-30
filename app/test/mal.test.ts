@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { setToken } from '../src/auth/tokens'
+import { getToken, setToken } from '../src/auth/tokens'
+import { AuthError } from '../src/http'
 import { fetchMalList, saveMalEntry } from '../src/mal/api'
 
 beforeEach(() => { localStorage.clear(); setToken('mal', { accessToken: 'MT', refreshToken: 'R', expiresAt: Date.now() + 1e9 }) })
@@ -19,6 +20,12 @@ describe('mal api', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true')
     expect(fetchMock.mock.calls[1][0]).toBe('https://api.myanimelist.net/v2/users/@me/animelist?offset=1000')
     expect(new Headers((fetchMock.mock.calls[0][1] as RequestInit).headers).get('authorization')).toBe('Bearer MT')
+  })
+
+  it('clears a revoked MAL token and reports AuthError', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })))
+    await expect(saveMalEntry({ malId: 9, status: 'watching', progress: 3, score: 8 })).rejects.toBeInstanceOf(AuthError)
+    expect(getToken('mal')).toBeNull()
   })
 
   it('patches list status as form data', async () => {

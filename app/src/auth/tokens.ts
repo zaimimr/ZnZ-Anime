@@ -1,5 +1,5 @@
 import { hosts } from '../hosts'
-import { AuthError, request } from '../http'
+import { AuthError, HttpError, request } from '../http'
 import type { Provider, Tokens } from '../types'
 
 const key = (provider: Provider) => `znz.tokens.${provider}`
@@ -37,7 +37,8 @@ export async function validToken(provider: Provider): Promise<string> {
     const fresh = (await res.json()) as Tokens
     setToken('mal', fresh)
     return fresh.accessToken
-  } catch {
+  } catch (e) {
+    if (!(e instanceof HttpError) || e.status !== 401) throw e
     clearToken('mal')
     throw new AuthError('mal')
   }

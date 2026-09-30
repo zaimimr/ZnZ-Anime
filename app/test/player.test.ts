@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, nextStreamIndex, shouldMarkWatched, statusAfter } from '../src/player/logic'
+import { activeSkip, nextStreamIndex, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
 import { clearResume, getResume, setResume } from '../src/player/resume'
 
@@ -43,6 +43,14 @@ describe('nextStreamIndex', () => {
   it('returns -1 when nothing is left', () => {
     expect(nextStreamIndex(streams, 4)).toBe(-1)
     expect(nextStreamIndex(streams.slice(0, 3), 0, true)).toBe(-1)
+  })
+})
+
+describe('shouldSaveResume', () => {
+  it('saves while playing and never after the episode ended', () => {
+    expect(shouldSaveResume({ currentTime: 300, ended: false })).toBe(true)
+    expect(shouldSaveResume({ currentTime: 0, ended: false })).toBe(false)
+    expect(shouldSaveResume({ currentTime: 1559, ended: true })).toBe(false)
   })
 })
 

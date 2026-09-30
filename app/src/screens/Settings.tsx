@@ -78,7 +78,7 @@ export function SettingsScreen() {
       <h2>Accounts</h2>
       {account('anilist', 'AniList', linked.anilist ? anilistName || 'Linked' : 'Not linked')}
       {account('mal', 'MyAnimeList', linked.mal ? 'Linked' : 'Not linked')}
-      {pending > 0 && <p className="muted">{pending} MAL {pending === 1 ? 'update' : 'updates'} waiting to retry.</p>}
+      {pending > 0 && <p className="muted">{pending} {pending === 1 ? 'update' : 'updates'} waiting to retry.</p>}
 
       <h2>Playback</h2>
       <Focusable className="btn" autoFocus onEnter={() => update({ ...settings, lang: settings.lang === 'sub' ? 'dub' : 'sub' })}>

@@ -5,11 +5,13 @@ vi.mock('../src/mal/api', () => ({ saveMalEntry: vi.fn(async () => {}) }))
 
 import { saveEntry } from '../src/anilist/api'
 import { setToken } from '../src/auth/tokens'
+import { AuthError } from '../src/http'
 import { saveMalEntry } from '../src/mal/api'
 import { enqueue, readQueue } from '../src/sync/queue'
 import { flushQueue, saveEverywhere } from '../src/sync/writer'
 
 const change = (malId: number, progress: number) => ({ anilistId: malId + 1, malId, status: 'watching' as const, progress, score: 0 })
+const targets = () => readQueue().map((i) => [i.target, i.change.malId, i.change.progress])
 
 beforeEach(() => {
   localStorage.clear()
@@ -19,11 +21,12 @@ beforeEach(() => {
 })
 
 describe('queue', () => {
-  it('keeps only the latest change per anime', () => {
-    enqueue(change(1, 3))
-    enqueue(change(2, 1))
-    enqueue(change(1, 4))
-    expect(readQueue().map((c) => [c.malId, c.progress])).toEqual([[2, 1], [1, 4]])
+  it('keeps only the latest change per site and anime', () => {
+    enqueue('mal', change(1, 3))
+    enqueue('anilist', change(1, 3))
+    enqueue('mal', change(2, 1))
+    enqueue('mal', change(1, 4))
+    expect(targets()).toEqual([['anilist', 1, 3], ['mal', 2, 1], ['mal', 1, 4]])
   })
 })
 
@@ -39,7 +42,7 @@ describe('saveEverywhere', () => {
   it('queues the MAL write when it fails', async () => {
     vi.mocked(saveMalEntry).mockRejectedValue(new Error('offline'))
     await saveEverywhere(change(1, 2))
-    expect(readQueue()).toEqual([change(1, 2)])
+    expect(targets()).toEqual([['mal', 1, 2]])
   })
 
   it('skips MAL when there is no MAL id or no MAL login', async () => {
@@ -49,28 +52,45 @@ describe('saveEverywhere', () => {
     expect(saveMalEntry).not.toHaveBeenCalled()
   })
 
-  it('does not write MAL when AniList fails', async () => {
-    vi.mocked(saveEntry).mockRejectedValue(new Error('down'))
-    await expect(saveEverywhere(change(1, 2))).rejects.toThrow('down')
-    expect(saveMalEntry).not.toHaveBeenCalled()
+  it('queues a failed AniList write and still writes MAL', async () => {
+    vi.mocked(saveEntry).mockRejectedValue(new Error('offline'))
+    await saveEverywhere(change(1, 2))
+    expect(saveMalEntry).toHaveBeenCalled()
+    expect(targets()).toEqual([['anilist', 1, 2]])
+  })
+
+  it('queues and rethrows when MAL login is revoked', async () => {
+    vi.mocked(saveMalEntry).mockRejectedValue(new AuthError('mal'))
+    await expect(saveEverywhere(change(1, 2))).rejects.toBeInstanceOf(AuthError)
+    expect(targets()).toEqual([['mal', 1, 2]])
   })
 })
 
 describe('flushQueue', () => {
-  it('removes sent items and keeps failed ones', async () => {
-    enqueue(change(1, 2))
-    enqueue(change(2, 3))
+  it('sends queued AniList and MAL changes and keeps failed ones', async () => {
+    enqueue('anilist', change(1, 2))
+    enqueue('mal', change(1, 2))
+    enqueue('mal', change(2, 3))
     vi.mocked(saveMalEntry).mockImplementation(async (c) => { if (c.malId === 2) throw new Error('x') })
     await flushQueue()
-    expect(readQueue().map((c) => c.malId)).toEqual([2])
+    expect(saveEntry).toHaveBeenCalledTimes(1)
+    expect(targets()).toEqual([['mal', 2, 3]])
+  })
+
+  it('keeps MAL changes while MAL is not linked', async () => {
+    enqueue('mal', change(1, 2))
+    localStorage.removeItem('znz.tokens.mal')
+    await flushQueue()
+    expect(saveMalEntry).not.toHaveBeenCalled()
+    expect(targets()).toEqual([['mal', 1, 2]])
   })
 
   it('keeps unsent items if the process dies mid-flush', async () => {
-    enqueue(change(1, 2))
-    enqueue(change(2, 3))
+    enqueue('mal', change(1, 2))
+    enqueue('mal', change(2, 3))
     vi.mocked(saveMalEntry).mockImplementationOnce(async () => {}).mockImplementationOnce(() => new Promise(() => {}))
     void flushQueue()
     await new Promise((r) => setTimeout(r, 0))
-    expect(readQueue().map((c) => c.malId)).toEqual([2])
+    expect(targets()).toEqual([['mal', 2, 3]])
   })
 })

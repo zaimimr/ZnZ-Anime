@@ -158,6 +158,7 @@ export async function refreshMal(req: Request, env: Env): Promise<Response> {
       refresh_token: refreshToken,
     }).toString(),
   })
-  if (!res.ok) return json({ error: 'refresh rejected' }, 401)
+  if (res.status === 400 || res.status === 401) return json({ error: 'refresh rejected' }, 401)
+  if (!res.ok) return json({ error: 'mal unavailable' }, 502)
   return json(toTokens(await res.json()))
 }
