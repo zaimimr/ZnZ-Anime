@@ -7,6 +7,7 @@ import { Home } from './screens/Home'
 import { Pair } from './screens/Pair'
 import { PlayerScreen } from './screens/Player'
 import { Search } from './screens/Search'
+import { SettingsScreen } from './screens/Settings'
 import { flushQueue } from './sync/writer'
 
 function Screens() {
@@ -31,8 +32,8 @@ function Screens() {
       return <DetailsScreen key={route.id} id={route.id} />
     case 'player':
       return <PlayerScreen key={`${route.id}-${route.ep}`} id={route.id} ep={route.ep} />
-    default:
-      return <div className="screen center">Coming next: {route.name}</div>
+    case 'settings':
+      return <SettingsScreen />
   }
 }
 

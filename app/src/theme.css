@@ -29,3 +29,4 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .player .badge { position: absolute; top: 40px; right: 80px; background: rgba(0, 0, 0, 0.7); padding: 12px 24px; border-radius: 8px; }
 .player .skip { position: absolute; right: 80px; bottom: 160px; background: var(--text); color: var(--bg); padding: 16px 32px; border-radius: 8px; font-weight: 700; }
 video::cue { font-size: 44px; background: rgba(0, 0, 0, 0.6); }
+.focusable.btn { display: inline-block; }
