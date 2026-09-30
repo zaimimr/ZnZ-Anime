@@ -9,8 +9,13 @@ interface MediaNode {
   episodes: number | null
 }
 
+export interface Related extends Card {
+  relation: string
+}
+
 export interface Details extends Card {
   description: string
+  related: Related[]
   banner?: string
   status: string
   nextEpisode?: number
@@ -30,6 +35,18 @@ export function toStatus(value: string): Status {
 
 export function fromStatus(status: Status): string {
   return toAnilist[status]
+}
+
+const relationLabels: Record<string, string> = { PREQUEL: 'Prequel', SEQUEL: 'Sequel', PARENT: 'Main story', SIDE_STORY: 'Side story' }
+
+type RelationEdge = { relationType: string; node: MediaNode & { type: string; startDate: { year: number | null; month: number | null; day: number | null } } }
+
+export function toRelated(edges: RelationEdge[]): Related[] {
+  const start = (e: RelationEdge) => { const d = e.node.startDate; return (d.year ?? 9999) * 10000 + (d.month ?? 12) * 100 + (d.day ?? 31) }
+  return edges
+    .filter((e) => e.node.type === 'ANIME' && relationLabels[e.relationType])
+    .sort((a, b) => start(a) - start(b))
+    .map((e) => ({ ...toCard(e.node), relation: relationLabels[e.relationType] }))
 }
 
 function toCard(m: MediaNode): Card {
@@ -76,8 +93,8 @@ export async function search(q: string): Promise<Card[]> {
 }
 
 export async function details(id: number): Promise<Details> {
-  const data = await gql<{ Media: MediaNode & { description: string | null; bannerImage: string | null; status: string; nextAiringEpisode: { episode: number } | null; mediaListEntry: { status: string; progress: number; score: number } | null } }>(
-    `query ($id: Int) { Media(id: $id) { ${CARD} description(asHtml: false) bannerImage status nextAiringEpisode { episode } mediaListEntry { status progress score(format: POINT_10) } } }`,
+  const data = await gql<{ Media: MediaNode & { description: string | null; bannerImage: string | null; status: string; nextAiringEpisode: { episode: number } | null; mediaListEntry: { status: string; progress: number; score: number } | null; relations: { edges: RelationEdge[] } } }>(
+    `query ($id: Int) { Media(id: $id) { ${CARD} description(asHtml: false) bannerImage status nextAiringEpisode { episode } mediaListEntry { status progress score(format: POINT_10) } relations { edges { relationType node { ${CARD} type startDate { year month day } } } } } }`,
     { id },
   )
   const m = data.Media
@@ -90,6 +107,7 @@ export async function details(id: number): Promise<Details> {
     listStatus: m.mediaListEntry ? toStatus(m.mediaListEntry.status) : undefined,
     progress: m.mediaListEntry?.progress ?? 0,
     score: m.mediaListEntry?.score ?? 0,
+    related: toRelated(m.relations?.edges ?? []),
   }
 }
 

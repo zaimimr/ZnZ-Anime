@@ -9,6 +9,17 @@ export function activeSkip(ranges: SkipRange[] | undefined, position: number): S
   return ranges?.find((r) => position >= r.start && position < r.end) ?? null
 }
 
+export function countdownAt(ranges: SkipRange[] | undefined, duration: number): number | null {
+  const ed = ranges?.find((r) => r.kind === 'ed')
+  if (!ed || !(duration > 0)) return null
+  return duration - ed.end > 15 ? ed.end : ed.start
+}
+
+export function playTarget(watched: number, available: number | undefined, total: number | undefined): number {
+  if (available === undefined || watched < available) return watched + 1
+  return total !== undefined && watched >= total ? 1 : Math.max(available, 1)
+}
+
 export function statusAfter(ep: number, total: number | undefined): Status {
   return total !== undefined && ep >= total ? 'completed' : 'watching'
 }

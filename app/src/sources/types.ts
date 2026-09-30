@@ -1,8 +1,8 @@
 import type { Lang } from '../types'
 export interface SourceShow { source: string; id: string }
-export interface Episode { number: number; title?: string }
 export interface Subtitle { url: string; lang: string; label: string; default?: boolean }
 export interface SkipRange { kind: 'op' | 'ed'; start: number; end: number }
+export interface Episode { number: number; title?: string; synopsis?: string; thumbnail?: string; duration?: number; skip?: SkipRange[] }
 export interface Stream { provider: string; url: string; format: 'hls' | 'mp4'; quality?: string; headers?: Record<string, string>; subtitles: Subtitle[]; skip?: SkipRange[] }
 export interface MediaRef { anilistId: number; titles: string[] }
 export interface SourceAdapter {

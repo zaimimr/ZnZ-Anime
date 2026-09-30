@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, nextStreamIndex, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
+import { activeSkip, countdownAt, nextStreamIndex, playTarget, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
 import { clearResume, getResume, setResume } from '../src/player/resume'
 
@@ -20,6 +20,22 @@ describe('player logic', () => {
     expect(activeSkip(ranges, 30)?.kind).toBe('op')
     expect(activeSkip(ranges, 120)).toBeNull()
     expect(activeSkip(undefined, 50)).toBeNull()
+  })
+
+  it('starts the next episode countdown at the outro unless a scene follows it', () => {
+    const ed = (end: number) => [{ kind: 'op' as const, start: 0, end: 90 }, { kind: 'ed' as const, start: 1370, end }]
+    expect(countdownAt(ed(1460), 1470)).toBe(1370)
+    expect(countdownAt(ed(1400), 1470)).toBe(1400)
+    expect(countdownAt([{ kind: 'op', start: 0, end: 90 }], 1470)).toBeNull()
+    expect(countdownAt(ed(1460), Number.NaN)).toBeNull()
+  })
+
+  it('picks the episode to play', () => {
+    expect(playTarget(3, 28, 28)).toBe(4)
+    expect(playTarget(3, undefined, 28)).toBe(4)
+    expect(playTarget(28, 28, 28)).toBe(1)
+    expect(playTarget(10, 10, undefined)).toBe(10)
+    expect(playTarget(0, 0, undefined)).toBe(1)
   })
 
   it('completes on the last episode', () => {

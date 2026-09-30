@@ -40,6 +40,12 @@ export async function fetchMalList(): Promise<ListEntry[]> {
   return entries
 }
 
+export async function malProgress(malId: number): Promise<number> {
+  const res = await malRequest(`${hosts.mal}/v2/anime/${malId}?fields=my_list_status`)
+  const body = (await res.json()) as { my_list_status?: { num_episodes_watched: number } }
+  return body.my_list_status?.num_episodes_watched ?? 0
+}
+
 export async function saveMalEntry(change: Change): Promise<void> {
   await malRequest(`${hosts.mal}/v2/anime/${change.malId}/my_list_status`, {
     method: 'PATCH',

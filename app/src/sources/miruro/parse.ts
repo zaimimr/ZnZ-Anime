@@ -10,9 +10,6 @@ export function pickShow(data: unknown, anilistId: number): string | null {
   return match?.id ?? null
 }
 
-export function parseEpisodes(data: unknown): Episode[] {
-  return list((data as Raw)?.data).map((e) => ({ number: Number(e.episode_number), title: e.title ?? undefined }))
-}
 
 function subtitles(raw: Raw[]): Subtitle[] {
   return raw
@@ -26,6 +23,20 @@ function skips(...sources: Raw[]): SkipRange[] | undefined {
     .filter((s) => (s.kind === 'op' || s.kind === 'ed') && typeof s.start_seconds === 'number')
     .map((s) => ({ kind: s.kind, start: s.start_seconds, end: s.end_seconds }) as SkipRange)
   return ranges.length ? ranges : undefined
+}
+
+export function parseEpisodes(data: unknown): Episode[] {
+  return list((data as Raw)?.data).map((e) => {
+    const skip = skips(e)
+    return {
+      number: Number(e.episode_number),
+      title: e.title ?? undefined,
+      ...(e.synopsis ? { synopsis: e.synopsis } : {}),
+      ...(e.thumbnail_url ? { thumbnail: String(e.thumbnail_url).replace('/t/p/original/', '/t/p/w300/') } : {}),
+      ...(typeof e.duration_seconds === 'number' ? { duration: e.duration_seconds } : {}),
+      ...(skip ? { skip } : {}),
+    }
+  })
 }
 
 const qualityValue = (q?: string) => Number(q?.match(/\d+/)?.[0] ?? 0)

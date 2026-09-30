@@ -52,6 +52,11 @@ describe('parse', () => {
     expect(parseEpisodes({ data: [{ episode_number: 1, title: 'Start' }, { episode_number: 2 }] })).toEqual([{ number: 1, title: 'Start' }, { number: 2, title: undefined }])
   })
 
+  it('parses episode picture, synopsis, length and skip times', () => {
+    const [ep] = parseEpisodes({ data: [{ episode_number: 1, title: 'Start', synopsis: 'Hi', thumbnail_url: 'https://image.tmdb.org/t/p/original/a.jpg', duration_seconds: 1500, skip_times: [{ kind: 'op', start_seconds: 1, end_seconds: 91 }, { kind: 'mixed_op', start_seconds: 5, end_seconds: 95 }] }] })
+    expect(ep).toEqual({ number: 1, title: 'Start', synopsis: 'Hi', thumbnail: 'https://image.tmdb.org/t/p/w300/a.jpg', duration: 1500, skip: [{ kind: 'op', start: 1, end: 91 }] })
+  })
+
   it('orders streams by provider then highest quality, keeps vtt subtitles and skip times', () => {
     const streams = parseStreams(playData, 'sub')
     expect(streams.map((s) => s.url)).toEqual(['https://cdn/1080.m3u8', 'https://cdn/720.m3u8', 'https://cdn2/master.m3u8'])

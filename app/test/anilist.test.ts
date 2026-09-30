@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { anilistIdsForMal, fetchList, fromStatus, mediaByIds, saveEntry, toStatus, trendingWithHistory } from '../src/anilist/api'
+import { anilistIdsForMal, fetchList, fromStatus, mediaByIds, saveEntry, toRelated, toStatus, trendingWithHistory } from '../src/anilist/api'
 import { getToken, setToken } from '../src/auth/tokens'
 import { AuthError } from '../src/http'
 
@@ -18,6 +18,21 @@ describe('status mapping', () => {
     expect(toStatus('PLANNING')).toBe('planning')
     expect(fromStatus('paused')).toBe('PAUSED')
     expect(fromStatus('watching')).toBe('CURRENT')
+  })
+})
+
+describe('toRelated', () => {
+  const node = (id: number, year: number | null, type = 'ANIME') => ({ id, idMal: null, title: { romaji: `A${id}`, english: null, native: null }, coverImage: { large: '' }, episodes: null, type, startDate: { year, month: 1, day: 1 } })
+
+  it('keeps seasons and side stories in release order', () => {
+    const related = toRelated([
+      { relationType: 'SEQUEL', node: node(3, 2026) },
+      { relationType: 'ADAPTATION', node: node(4, 2020, 'MANGA') },
+      { relationType: 'CHARACTER', node: node(5, 2021) },
+      { relationType: 'PREQUEL', node: node(1, 2020) },
+      { relationType: 'SIDE_STORY', node: node(2, null) },
+    ])
+    expect(related.map((r) => [r.id, r.relation])).toEqual([[1, 'Prequel'], [3, 'Sequel'], [2, 'Side story']])
   })
 })
 

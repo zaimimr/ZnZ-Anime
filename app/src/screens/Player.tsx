@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
 import { AuthError } from '../http'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
-import { activeSkip, nextStreamIndex, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
+import { activeSkip, countdownAt, nextStreamIndex, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
 import { playableUrl } from '../player/proxy'
 import { clearResume, getResume, setResume } from '../player/resume'
 import { getSettings } from '../settings'
 import { resolveFirst, streamsWithFallback } from '../sources/registry'
-import type { SourceAdapter, SourceShow, Stream } from '../sources/types'
+import type { SkipRange, SourceAdapter, SourceShow, Stream } from '../sources/types'
 import { saveEverywhere } from '../sync/writer'
 import type { Lang } from '../types'
 
@@ -20,6 +20,7 @@ interface Loaded {
   streams: Stream[]
   lang: Lang
   total: number
+  skip?: SkipRange[]
 }
 
 const format = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -34,7 +35,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [overlay, setOverlay] = useState(true)
   const [time, setTime] = useState({ now: 0, total: 0 })
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [undoIntro, setUndoIntro] = useState<SkipRange | null>(null)
   const marked = useRef(false)
+  const intro = useRef<'pending' | 'skipped' | 'watching'>('pending')
+  const countdownFired = useRef(false)
   const startAt = useRef(getResume(id, ep))
   const triedAdapters = useRef<string[]>([])
 
@@ -48,7 +52,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!streams.length) return load(triedAdapters.current)
     setBadge(lang === wanted ? `Playing ${lang.toUpperCase()}` : `${wanted.toUpperCase()} not available, playing ${lang.toUpperCase()}`)
     setIndex(0)
-    setLoaded({ info, adapter: found.adapter, show: found.show, streams, lang, total: info.episodes ?? found.episodes.length })
+    setLoaded({ info, adapter: found.adapter, show: found.show, streams, lang, total: info.episodes ?? found.episodes.length, skip: found.episodes.find((e) => e.number === ep)?.skip })
   }, [id, ep])
 
   useEffect(() => {
@@ -92,7 +96,27 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     return () => clearInterval(timer)
   }, [id, ep])
 
-  const playNext = useCallback(() => replace({ name: 'player', id, ep: ep + 1 }), [replace, id, ep])
+  const markWatched = useCallback(() => {
+    if (!loaded || marked.current || ep <= loaded.info.progress) return
+    marked.current = true
+    void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes), progress: ep, score: loaded.info.score }).catch((e) => {
+      if (e instanceof AuthError) setBadge(`${e.provider === 'mal' ? 'MAL' : 'AniList'} login expired. Link it again in Settings.`)
+    })
+  }, [loaded, id, ep])
+
+  const next = useMemo(() => {
+    if (!loaded) return null
+    if (ep < loaded.total) return { id, ep: ep + 1, label: 'Next episode' }
+    const sequel = loaded.info.related.find((r) => r.relation === 'Sequel')
+    return sequel ? { id: sequel.id, ep: 1, label: `Next: ${sequel.title}` } : null
+  }, [loaded, id, ep])
+
+  const playNext = useCallback(() => {
+    if (!next) return
+    markWatched()
+    clearResume(id, ep)
+    replace({ name: 'player', id: next.id, ep: next.ep })
+  }, [next, markWatched, replace, id, ep])
 
   useEffect(() => {
     if (countdown === null) return
@@ -101,7 +125,14 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     return () => clearTimeout(timer)
   }, [countdown, playNext])
 
-  const skip = activeSkip(loaded?.streams[index]?.skip, time.now)
+  const ranges = loaded?.streams[index]?.skip ?? loaded?.skip
+  const skip = activeSkip(ranges, time.now)
+
+  useEffect(() => {
+    if (!undoIntro) return
+    const timer = setTimeout(() => setUndoIntro(null), 5000)
+    return () => clearTimeout(timer)
+  }, [undoIntro])
 
   useEffect(() => {
     setBackHandler(() => {
@@ -109,10 +140,16 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         setCountdown(null)
         return true
       }
+      if (undoIntro && video.current) {
+        video.current.currentTime = undoIntro.start
+        intro.current = 'watching'
+        setUndoIntro(null)
+        return true
+      }
       return false
     })
     return () => setBackHandler(null)
-  }, [countdown, setBackHandler])
+  }, [countdown, undoIntro, setBackHandler])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -144,11 +181,17 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const el = video.current
     if (!el || !loaded) return
     setTime({ now: el.currentTime, total: el.duration || 0 })
-    if (!marked.current && shouldMarkWatched(el.currentTime, el.duration) && ep > loaded.info.progress) {
-      marked.current = true
-      void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes), progress: ep, score: loaded.info.score }).catch((e) => {
-        if (e instanceof AuthError) setBadge(`${e.provider === 'mal' ? 'MAL' : 'AniList'} login expired. Link it again in Settings.`)
-      })
+    if (shouldMarkWatched(el.currentTime, el.duration)) markWatched()
+    const op = activeSkip(ranges, el.currentTime)
+    if (op?.kind === 'op' && intro.current === 'pending') {
+      intro.current = 'skipped'
+      el.currentTime = op.end
+      setUndoIntro(op)
+    }
+    const at = countdownAt(ranges, el.duration)
+    if (next && at !== null && el.currentTime >= at && !countdownFired.current) {
+      countdownFired.current = true
+      setCountdown(5)
     }
   }
 
@@ -162,7 +205,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const onEnded = () => {
     clearResume(id, ep)
-    if (loaded && ep < loaded.total) setCountdown(10)
+    if (next) setCountdown(10)
   }
 
   if (error) {
@@ -185,8 +228,9 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       </video>
       {!loaded && <div className="badge">Loading...</div>}
       {badge && <div className="badge">{badge}</div>}
-      {skip && <div className="skip">Skip {skip.kind === 'op' ? 'intro' : 'outro'} (OK)</div>}
-      {countdown !== null && <div className="skip">Next episode in {countdown} (OK to play, Back to cancel)</div>}
+      {undoIntro && countdown === null && <div className="skip">Skipped intro · Back to watch it</div>}
+      {skip && !undoIntro && countdown === null && <div className="skip">Skip {skip.kind === 'op' ? 'intro' : 'outro'} (OK)</div>}
+      {countdown !== null && next && <div className="skip">{next.label} in {countdown} (OK to play, Back to cancel)</div>}
       {overlay && loaded && (
         <div className="overlay">
           <div>{loaded.info.title} · Episode {ep}</div>
