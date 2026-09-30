@@ -60,6 +60,33 @@ describe('/proxy', () => {
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes)
   })
 
+  it('forwards the client user agent and falls back to a browser one', async () => {
+    const fetchMock = vi.fn(async () => new Response('x', { headers: { 'content-type': 'video/mp2t' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const u = b64urlEncode('https://cdn.test/a/seg.ts')
+    await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`, { headers: { 'user-agent': 'TizenTV/9' } }), env)
+    await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
+    const agent = (i: number) => new Headers((fetchMock.mock.calls[i] as unknown as [string, RequestInit])[1].headers).get('user-agent')
+    expect(agent(0)).toBe('TizenTV/9')
+    expect(agent(1)).toMatch(/Mozilla\/5\.0/)
+  })
+
+  it('rewrites playlists disguised as images without an m3u8 extension', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('#EXTM3U\n/cdn/seg-1\n', { headers: { 'content-type': 'image/jpeg' } })))
+    const u = b64urlEncode('https://px.test/cdn/abc')
+    const res = await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
+    expect(res.headers.get('content-type')).toBe('application/vnd.apple.mpegurl')
+    expect(target((await res.text()).split('\n')[1]).u).toBe('https://px.test/cdn/seg-1')
+  })
+
+  it('passes image-typed binary segments through untouched', async () => {
+    const bytes = new Uint8Array([0xff, 0xd8, 0x47, 0x40, 0x11])
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(bytes, { headers: { 'content-type': 'image/jpeg' } })))
+    const u = b64urlEncode('https://px.test/cdn/seg-1')
+    const res = await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes)
+  })
+
   it('rejects missing or non-http targets', async () => {
     expect((await worker.fetch(new Request('https://auth.test/proxy'), env)).status).toBe(400)
     const u = b64urlEncode('file:///etc/passwd')
