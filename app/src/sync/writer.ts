@@ -15,6 +15,7 @@ export class NotOnMalError extends Error {
 async function attempt(target: Target, change: Change): Promise<AuthError | null> {
   try {
     await (target === 'anilist' ? saveEntry(change) : saveMalEntry(change))
+    removeFromQueue({ target, change })
     return null
   } catch (e) {
     enqueue(target, change)
@@ -37,6 +38,7 @@ export async function saveEverywhere(change: Change): Promise<void> {
 
 export async function removeEverywhere(anilistId: number, listId: number | undefined, malId: number | undefined): Promise<void> {
   invalidateLibrary()
+  for (const target of ['anilist', 'mal'] as const) removeFromQueue({ target, change: { anilistId, malId, status: 'planning', progress: 0, score: 0 } })
   const targets = syncTargets()
   if (!targets.length) return removeLocal(anilistId)
   if (targets.includes('anilist') && listId) await deleteEntry(listId)
@@ -51,7 +53,7 @@ export async function flushQueue(): Promise<void> {
     if (!getToken(item.target)) continue
     try {
       await (item.target === 'anilist' ? saveEntry(item.change) : saveMalEntry(item.change))
-      removeFromQueue(item)
+      removeFromQueue(item, true)
     } catch {
       continue
     }

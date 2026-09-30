@@ -26,7 +26,7 @@ export async function request(url: string, init?: RequestInit, opts: { provider?
     const res = await fetch(url, init)
     if (res.ok) return res
     if (res.status === 429 && attempt < retries) {
-      const seconds = Number(res.headers.get('retry-after')) || 2 ** attempt
+      const seconds = Math.min(Number(res.headers.get('retry-after')) || 2 ** attempt, 5)
       await sleep(seconds * 1000)
       continue
     }

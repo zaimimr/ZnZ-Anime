@@ -139,6 +139,7 @@ export function SettingsScreen() {
   }
 
   const merge = async (plan: MergePlan) => {
+    setJob({ step: 'working', label: 'Merging...' })
     try {
       await applyMerge(plan, (done, total) => setJob({ step: 'working', label: `Merging ${done} of ${total}` }))
       setJob({ step: 'done', message: 'Merged. New changes go to both lists.' })
@@ -149,9 +150,10 @@ export function SettingsScreen() {
   }
 
   const copyLocal = async () => {
+    setJob({ step: 'working', label: 'Reading your account list...' })
     try {
-      await copyLocalList((done, total) => setJob({ step: 'working', label: `Copying ${done} of ${total}` }))
-      setJob({ step: 'done', message: 'Your list from this TV is now on your account.' })
+      const skipped = await copyLocalList((done, total) => setJob({ step: 'working', label: `Copying ${done} of ${total}` }))
+      setJob({ step: 'done', message: skipped ? `Copied. ${skipped} ${skipped === 1 ? 'show is' : 'shows are'} not on MyAnimeList and stayed on this TV.` : 'Your list from this TV is now on your account.' })
     } catch (e) {
       setJob({ step: 'error', message: `${(e as Error).message}. Try again to continue.` })
     }
@@ -240,7 +242,7 @@ export function SettingsScreen() {
                 title={`${job.plan.toAnilist.length} changes on AniList, ${job.plan.toMal.length} on MAL`}
                 focusKey="merge-now"
                 detail={job.plan.unmatched.length ? `${job.plan.unmatched.length} shows only exist on one site and are left alone` : undefined}
-                onEnter={() => merge(job.plan)}
+                onEnter={() => !busy && merge(job.plan)}
               >
                 <span className="pill accent">Merge now</span>
               </Row>

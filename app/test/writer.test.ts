@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/anilist/api', () => ({ saveEntry: vi.fn(async () => {}) }))
-vi.mock('../src/mal/api', () => ({ saveMalEntry: vi.fn(async () => {}) }))
+vi.mock('../src/anilist/api', () => ({ saveEntry: vi.fn(async () => {}), deleteEntry: vi.fn(async () => {}) }))
+vi.mock('../src/mal/api', () => ({ saveMalEntry: vi.fn(async () => {}), deleteMalEntry: vi.fn(async () => {}) }))
 
 import { saveEntry } from '../src/anilist/api'
 import { setToken } from '../src/auth/tokens'
@@ -90,6 +90,29 @@ describe('saveEverywhere', () => {
     vi.mocked(saveMalEntry).mockRejectedValue(new AuthError('mal'))
     await expect(saveEverywhere(change(1, 2))).rejects.toBeInstanceOf(AuthError)
     expect(targets()).toEqual([['mal', 1, 2]])
+  })
+})
+
+describe('queue cleanup', () => {
+  it('drops an older queued save once a newer one succeeds', async () => {
+    enqueue('anilist', change(1, 3))
+    await saveEverywhere(change(1, 4))
+    expect(targets()).toEqual([])
+  })
+
+  it('keeps a newer queued save that arrived during a flush', async () => {
+    enqueue('mal', change(1, 3))
+    vi.mocked(saveMalEntry).mockImplementationOnce(async () => { enqueue('mal', change(1, 4)) })
+    await flushQueue()
+    expect(targets()).toEqual([['mal', 1, 4]])
+  })
+
+  it('forgets queued saves for a removed show', async () => {
+    enqueue('anilist', change(1, 3))
+    enqueue('mal', change(1, 3))
+    vi.mocked(saveEntry).mockClear()
+    await removeEverywhere(2, undefined, 1)
+    expect(targets()).toEqual([])
   })
 })
 

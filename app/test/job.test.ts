@@ -38,3 +38,21 @@ describe('merge job', () => {
     expect(readUnmatched().map((u) => u.title)).toEqual(['X'])
   })
 })
+
+describe('copyLocalList', () => {
+  it('adds missing shows and only raises progress on the account', async () => {
+    const { setToken } = await import('../src/auth/tokens')
+    const { copyLocalList } = await import('../src/sync/job')
+    const { readLocal } = await import('../src/library')
+    setToken('anilist', { accessToken: 'A', expiresAt: Date.now() + 1e9 })
+    localStorage.setItem('znz.settings', JSON.stringify({ syncBoth: false }))
+    localStorage.setItem('znz.local.list', JSON.stringify([
+      { anilistId: 1, malId: 101, status: 'planning', progress: 0, score: 0, updatedAt: 1 },
+      { anilistId: 3, status: 'watching', progress: 2, score: 0, updatedAt: 1 },
+    ]))
+    vi.mocked(saveEntry).mockClear()
+    expect(await copyLocalList(() => undefined, 0)).toBe(0)
+    expect(vi.mocked(saveEntry).mock.calls.map((c) => c[0])).toEqual([{ anilistId: 3, malId: undefined, status: 'watching', progress: 2, score: 0 }])
+    expect(readLocal()).toEqual([])
+  })
+})

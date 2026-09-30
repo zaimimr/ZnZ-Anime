@@ -62,8 +62,8 @@ export function removeLocal(anilistId: number): void {
   writeLocal(readLocal().filter((e) => e.anilistId !== anilistId))
 }
 
-export function clearLocal(): void {
-  writeLocal([])
+export function replaceLocal(entries: LocalEntry[]): void {
+  writeLocal(entries)
 }
 
 let memo: { at: number; source: ListSource; items: Promise<ListItem[]> } | null = null
@@ -92,7 +92,7 @@ async function load(source: ListSource): Promise<ListItem[]> {
 
 export function fetchLibrary(retry = true): Promise<ListItem[]> {
   const source = listSource()
-  if (memo && memo.source === source && Date.now() - memo.at < 30_000) return memo.items
+  if (memo && memo.source === source && Date.now() - memo.at < 120_000) return memo.items
   const items = load(source).catch((e: unknown) => {
     if (retry && e instanceof AuthError) return fetchLibrary(false)
     throw e
@@ -116,5 +116,5 @@ export async function libraryEntry(info: Details): Promise<LibraryEntry> {
   if (!readMal) return fromAnilist
   if (source === 'mal') return malEntry(info.idMal!)
   const mal = await malEntry(info.idMal!).catch(() => null)
-  return mal ? { ...fromAnilist, progress: Math.max(fromAnilist.progress, mal.progress) } : fromAnilist
+  return mal ? { ...fromAnilist, progress: Math.max(fromAnilist.progress, mal.progress), score: fromAnilist.score || mal.score } : fromAnilist
 }

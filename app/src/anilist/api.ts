@@ -87,15 +87,26 @@ export async function fetchList(): Promise<ListItem[]> {
   )
 }
 
+const lookupCache = new Map<string, { at: number; media: ListMedia }>()
+const LOOKUP_TTL = 600_000
+
 export async function mediaLookup(by: 'id' | 'idMal', ids: number[]): Promise<Map<number, ListMedia>> {
   const result = new Map<number, ListMedia>()
-  const unique = [...new Set(ids)]
+  for (const id of ids) {
+    const hit = lookupCache.get(`${by}:${id}`)
+    if (hit && Date.now() - hit.at < LOOKUP_TTL) result.set(id, hit.media)
+  }
+  const unique = [...new Set(ids)].filter((id) => !result.has(id))
   for (let i = 0; i < unique.length; i += 50) {
     const data = await gql<{ Page: { media: ListMedia[] } }>(
       `query ($ids: [Int]) { Page(perPage: 50) { media(${by}_in: $ids, type: ANIME) { ${CARD} status nextAiringEpisode { episode airingAt } } } }`,
       { ids: unique.slice(i, i + 50) },
     )
-    for (const m of data.Page.media) result.set(by === 'id' ? m.id : m.idMal!, m)
+    for (const m of data.Page.media) {
+      const key = by === 'id' ? m.id : m.idMal!
+      result.set(key, m)
+      lookupCache.set(`${by}:${key}`, { at: Date.now(), media: m })
+    }
   }
   return result
 }

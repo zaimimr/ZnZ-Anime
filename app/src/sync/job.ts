@@ -1,8 +1,8 @@
 import { anilistIdsForMal, fetchList, saveEntry } from '../anilist/api'
 import { fetchMalList, saveMalEntry } from '../mal/api'
 import type { ListEntry } from '../types'
-import { clearLocal, readLocal } from '../library'
-import { type MergePlan, planMerge } from './merge'
+import { fetchLibrary, readLocal, replaceLocal, syncTargets } from '../library'
+import { type MergePlan, mergeEntry, planMerge } from './merge'
 import { saveEverywhere } from './writer'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -45,13 +45,23 @@ export function isMerged(): boolean {
   return localStorage.getItem('znz.merged') === '1'
 }
 
-export async function copyLocalList(onProgress: (done: number, total: number) => void, delayMs = 700): Promise<void> {
+export async function copyLocalList(onProgress: (done: number, total: number) => void, delayMs = 700): Promise<number> {
   const entries = readLocal()
+  const remote = new Map((await fetchLibrary()).map((i) => [i.entry.anilistId, i.entry]))
+  const malOnly = syncTargets().every((t) => t === 'mal')
+  const skipped = entries.filter((e) => malOnly && !e.malId)
+  const copy = entries.filter((e) => !skipped.includes(e))
   let done = 0
-  for (const e of entries) {
-    await saveEverywhere({ anilistId: e.anilistId, malId: e.malId, status: e.status, progress: e.progress, score: e.score })
-    onProgress(++done, entries.length)
-    await sleep(delayMs)
+  onProgress(done, copy.length)
+  for (const e of copy) {
+    const current = remote.get(e.anilistId)
+    const merged = mergeEntry(current, { ...e, title: '' })
+    if (!current || current.status !== merged.status || current.progress !== merged.progress || current.score !== merged.score) {
+      await saveEverywhere({ anilistId: e.anilistId, malId: e.malId, ...merged })
+      await sleep(delayMs)
+    }
+    onProgress(++done, copy.length)
   }
-  clearLocal()
+  replaceLocal(skipped)
+  return skipped.length
 }

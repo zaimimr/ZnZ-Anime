@@ -28,6 +28,7 @@ export function enqueue(target: Target, change: Change): void {
   writeQueue([...readQueue().filter((i) => idOf(i) !== idOf(item)), item])
 }
 
-export function removeFromQueue(item: QueueItem): void {
-  writeQueue(readQueue().filter((i) => idOf(i) !== idOf(item)))
+export function removeFromQueue(item: QueueItem, onlyIfUnchanged = false): void {
+  const same = (i: QueueItem) => JSON.stringify(i.change) === JSON.stringify(item.change)
+  writeQueue(readQueue().filter((i) => idOf(i) !== idOf(item) || (onlyIfUnchanged && !same(i))))
 }

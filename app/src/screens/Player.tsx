@@ -103,6 +103,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const marked = useRef(false)
   const skipped = useRef<Record<'op' | 'ed', 'pending' | 'skipped' | 'watching'>>({ op: 'pending', ed: 'pending' })
   const countdownFired = useRef(false)
+  const countdownActive = useRef(false)
   const startAt = useRef(getResume(id, ep))
   const triedAdapters = useRef<string[]>([])
 
@@ -110,7 +111,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const info = await details(id)
     const [found, entry] = await Promise.all([
       resolveFirst({ anilistId: id, titles: info.titles }, skipAdapters),
-      libraryEntry(info).catch((): LibraryEntry => ({ status: info.listStatus, progress: info.progress, score: info.score })),
+      libraryEntry(info).catch((): LibraryEntry => ({ progress: Number.POSITIVE_INFINITY, score: 0 })),
     ])
     if (!found) return setError('No source available.')
     triedAdapters.current = [...skipAdapters, found.adapter.id]
@@ -139,7 +140,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const nextStream = useCallback((skipProvider = false) => {
     if (!loaded) return
     const el = video.current
-    if (countdownFired.current || (el && nearEnd(el.currentTime, el.duration))) return setFinished(true)
+    if (countdownActive.current || (el && nearEnd(el.currentTime, el.duration))) return setFinished(true)
     startAt.current = video.current?.currentTime || startAt.current
     const next = nextStreamIndex(loaded.streams, index, skipProvider)
     setBadge('This server stopped working, trying another one')
@@ -220,6 +221,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   }, [next, markWatched, replace, id, ep])
 
   useEffect(() => {
+    countdownActive.current = countdown !== null
     if (countdown === null) return
     if (countdown === 0) return playNext()
     const timer = setTimeout(() => setCountdown(countdown - 1), 1000)

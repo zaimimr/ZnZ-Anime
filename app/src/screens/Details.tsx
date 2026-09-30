@@ -76,6 +76,7 @@ export function DetailsScreen({ id }: { id: number }) {
   const [attempt, setAttempt] = useState(0)
   const [source, setSource] = useState<SourceState>({ state: 'loading' })
   const [entry, setEntry] = useState<LibraryEntry>({ progress: 0, score: 0 })
+  const [entryState, setEntryState] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [lang, setLang] = useState(getSettings().lang)
   const [menu, setMenu] = useState(false)
   const [notice, setNotice] = useState('')
@@ -105,7 +106,11 @@ export function DetailsScreen({ id }: { id: number }) {
         setInfo(d)
         loadSource(d)
         setEntry({ status: d.listStatus, progress: d.progress, score: d.score, listId: d.listId })
-        libraryEntry(d).then(setEntry).catch(() => undefined)
+        setEntryState('loading')
+        libraryEntry(d).then((e) => {
+          setEntry(e)
+          setEntryState('ready')
+        }).catch(() => setEntryState('failed'))
       })
       .catch(() => setFailed(true))
   }, [id, loadSource, attempt])
@@ -126,7 +131,9 @@ export function DetailsScreen({ id }: { id: number }) {
     closeMenu()
     try {
       if (status === null) {
-        await removeEverywhere(info.id, entry.listId, info.idMal)
+        await removeEverywhere(info.id, entry.listId, info.idMal).catch(() => {
+          throw new Error('remove')
+        })
         setEntry({ progress: 0, score: 0 })
         setNotice('Removed from your list')
       } else {
@@ -136,7 +143,9 @@ export function DetailsScreen({ id }: { id: number }) {
         setNotice(`Moved to ${statusLabels[status]}`)
       }
     } catch (e) {
-      setNotice(e instanceof NotOnMalError ? e.message : 'Could not update your list. It will retry when the app starts.')
+      if (e instanceof NotOnMalError) setNotice(e.message)
+      else if ((e as Error).message === 'remove') setNotice('Could not remove it. Check the connection and try again.')
+      else setNotice('Could not update your list. It will retry when the app starts.')
     }
   }
 
@@ -180,7 +189,7 @@ export function DetailsScreen({ id }: { id: number }) {
             </Focusable>
           )}
           <div className="menu-anchor">
-            <Focusable focusKey="status-btn" className="btn with-icon" autoFocus={source.state === 'none'} onEnter={() => setMenu(true)}>
+            <Focusable focusKey="status-btn" className="btn with-icon" autoFocus={source.state === 'none'} onEnter={() => (entryState === 'ready' ? setMenu(true) : setNotice(entryState === 'loading' ? 'Still reading your list...' : 'Could not read your list. Open the show again to retry.'))}>
               {entry.status ? statusLabels[entry.status] : 'Add to list'} <Icon name="down" size={22} />
             </Focusable>
             {menu && <StatusMenu current={entry.status} onPick={(st) => void (st === entry.status ? closeMenu() : setStatus(st))} />}
