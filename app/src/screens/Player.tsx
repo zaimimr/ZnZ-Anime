@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
 import { aniskip, mergeSkips } from '../aniskip'
+import { hosts } from '../hosts'
 import { type LibraryEntry, libraryEntry } from '../library'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
@@ -116,7 +117,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!found) return setError('No source available.')
     triedAdapters.current = [...skipAdapters, found.adapter.id]
     const wanted = getSettings().lang
-    const { streams, lang } = await streamsWithFallback(found.adapter, found.show, ep, wanted)
+    const result = await streamsWithFallback(found.adapter, found.show, ep, wanted)
+    const { lang } = result
+    const streams = hosts.auth ? result.streams : result.streams.filter((s) => !s.headers)
+    if (!streams.length && result.streams.length) return setError('This episode needs your server. Add it in Settings > Server.')
     if (!streams.length) return load(triedAdapters.current)
     if (lang !== wanted) setBadge(`${wanted.toUpperCase()} not available, playing ${lang.toUpperCase()}`)
     setIndex(0)

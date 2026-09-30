@@ -1,3 +1,4 @@
+import { hosts } from '../hosts'
 import { useRouter } from '../nav/router'
 import { finishOnboarding } from '../onboarding'
 import { Focusable } from '../ui/Focusable'
@@ -25,6 +26,7 @@ export function Welcome() {
           <div className="brand">ZnZ<span>Anime</span></div>
           <h1>Anime on the big screen</h1>
           <p className="muted">Pick how you want to keep track of what you watch. You can change this later in Settings.</p>
+          {!hosts.auth && <p className="welcome-warn">No server is set yet. Videos and logins need one. Add it in Settings &gt; Server, see the README on GitHub.</p>}
         </div>
       </div>
       <div className="choices">

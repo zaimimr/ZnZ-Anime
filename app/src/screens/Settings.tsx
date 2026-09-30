@@ -11,6 +11,8 @@ import { applyMerge, copyLocalList, isMerged, prepareMerge, readUnmatched } from
 import type { MergePlan } from '../sync/merge'
 import { readQueue } from '../sync/queue'
 import { flushQueue } from '../sync/writer'
+import { checkServer, hosts, serverUrl } from '../hosts'
+import { applyKey, keyboardRows } from './keyboard'
 import type { Provider } from '../types'
 import { Focusable } from '../ui/Focusable'
 import { Icon, type IconName } from '../ui/Icon'
@@ -18,13 +20,14 @@ import { providerNames } from './Pair'
 
 const REPO = 'github.com/zaimimr/znz-anime'
 
-type Section = 'accounts' | 'playback' | 'sync' | 'sources' | 'about'
+type Section = 'accounts' | 'server' | 'playback' | 'sync' | 'sources' | 'about'
 
 const sections: { id: Section; icon: IconName; label: string; caption: string }[] = [
   { id: 'accounts', icon: 'user', label: 'Accounts', caption: 'AniList and MyAnimeList' },
+  { id: 'server', icon: 'server', label: 'Server', caption: 'Needed for logins and video' },
   { id: 'playback', icon: 'sliders', label: 'Playback', caption: 'Audio, skipping, autoplay' },
   { id: 'sync', icon: 'sync', label: 'List sync', caption: 'Keep your lists matched' },
-  { id: 'sources', icon: 'server', label: 'Sources', caption: 'Where episodes come from' },
+  { id: 'sources', icon: 'play', label: 'Sources', caption: 'Where episodes come from' },
   { id: 'about', icon: 'info', label: 'About', caption: 'Version and reset' },
 ]
 
@@ -46,6 +49,37 @@ function Row({ title, detail, children, onEnter, focusKey }: { title: string; de
       </span>
       {children}
     </Focusable>
+  )
+}
+
+const urlRows = keyboardRows.map((row) => row.map((key) => (key === ':' ? '.' : key)).filter((key) => key !== 'space'))
+const keyLabels: Record<string, string> = { del: 'Delete', clear: 'Clear' }
+
+function ServerEditor({ initial, onDone }: { initial: string; onDone: (url: string | null) => void }) {
+  const [text, setText] = useState(initial.replace(/^https:\/\//, ''))
+  const [status, setStatus] = useState('')
+  const save = async () => {
+    const url = serverUrl(text)
+    setStatus('Checking the server...')
+    if (await checkServer(url)) onDone(url)
+    else setStatus('That address did not answer like a ZnZ Anime server. Check it and try again.')
+  }
+  return (
+    <div className="server-editor">
+      <div className="server-input">https://<span>{text}</span><span className="caret" /></div>
+      {urlRows.map((row, i) => (
+        <div key={i} className="key-row">
+          {row.map((key) => (
+            <Focusable key={key} className="key" autoFocus={i === 0 && key === 'a'} onEnter={() => setText((t) => applyKey(t, key))}>{keyLabels[key] ?? key}</Focusable>
+          ))}
+        </div>
+      ))}
+      <div className="key-row actions">
+        <Focusable className="btn active" onEnter={save}>Save</Focusable>
+        <Focusable className="btn" onEnter={() => onDone(null)}>Cancel</Focusable>
+      </div>
+      {status && <p className="pane-note">{status}</p>}
+    </div>
   )
 }
 
@@ -93,6 +127,8 @@ export function SettingsScreen() {
   const [pending, setPending] = useState(readQueue().length)
   const [local, setLocal] = useState(readLocal().length)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [editingServer, setEditingServer] = useState(false)
+  const [server, setServer] = useState(hosts.auth)
   const [confirmUnlink, setConfirmUnlink] = useState<Provider | null>(null)
 
   useEffect(() => {
@@ -103,6 +139,7 @@ export function SettingsScreen() {
   useEffect(() => {
     setConfirmReset(false)
     setConfirmUnlink(null)
+    setEditingServer(false)
   }, [section])
 
   const update = (change: Partial<Settings>) => {
@@ -205,6 +242,33 @@ export function SettingsScreen() {
             ? `${providerNames[main]} is your main list. Home, My list and the schedule read from it.`
             : 'No account linked. Your list is saved on this TV only.'}
         </div>
+      </>
+    ),
+    server: editingServer ? (
+      <ServerEditor
+        initial={server}
+        onDone={(url) => {
+          setEditingServer(false)
+          if (url === null) return setFocus('server-row')
+          update({ server: url })
+          setServer(url)
+          setJob({ step: 'done', message: 'Server saved.' })
+          setFocus('server-row')
+        }}
+      />
+    ) : (
+      <>
+        <p className="pane-lead">A small free Cloudflare Worker that you run yourself. It logs you in and plays streams that the TV cannot open on its own.</p>
+        <Row title="Server address" focusKey="server-row" detail={server ? server.replace(/^https:\/\//, '') : 'Not set. Most videos will not play.'} onEnter={() => setEditingServer(true)}>
+          <span className={`pill ${server ? '' : 'accent'}`}>{server ? 'Change' : 'Add'}</span>
+        </Row>
+        {settings.server && (
+          <Row title="Forget this address" detail="Go back to the server this build came with, if any" onEnter={() => { update({ server: '' }); setServer(hosts.auth) }}>
+            <span className="pill">Forget</span>
+          </Row>
+        )}
+        {job.step === 'done' && <div className="pane-note">{job.message}</div>}
+        <div className="pane-note">How to set one up: see the README at {REPO}</div>
       </>
     ),
     playback: (

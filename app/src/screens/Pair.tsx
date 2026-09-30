@@ -14,7 +14,7 @@ export const providerNames: Record<Provider, string> = { anilist: 'AniList', mal
 export function Pair({ provider, next }: { provider: Provider; next: 'home' | 'settings' }) {
   const { back, reset } = useRouter()
   const [pair, setPair] = useState<{ code: string; pairUrl: string } | null>(null)
-  const [error, setError] = useState(hosts.auth ? '' : 'Login is not set up in this build of the app.')
+  const [error, setError] = useState(hosts.auth ? '' : 'No server is set. Add yours in Settings > Server first.')
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
