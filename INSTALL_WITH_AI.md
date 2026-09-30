@@ -76,11 +76,13 @@ Go back to the repo root with `cd ..` afterwards.
 
 Find the computer's local IP address (macOS: `ipconfig getifaddr en0`, Linux: `hostname -I`, Windows: `ipconfig`). Then tell the person:
 
-1. On the TV, open **Apps**.
-2. On the remote, press `1` `2` `3` `4` `5`. (On remotes without number keys, use the on-screen number pad from the remote's `123` button.)
-3. Turn **Developer Mode** On, type the computer's IP address, press OK.
-4. Restart the TV by holding the power button until it turns off and back on.
-5. Find the TV's IP address under **Settings > General > Network > Network Status > IP Settings**, and tell you.
+1. Press the **Home** button on the remote and go to **Apps**.
+2. Scroll all the way down to **App Settings** and open it.
+3. Type `1` `2` `3` `4` `5`. If the remote has no number keys, press the **123** (or colored) button to bring up the on-screen keypad first.
+4. In the pop-up, switch **Developer Mode** to **On**.
+5. Enter the computer's IP address and select **OK**.
+6. Restart the TV: turn it off and back on, or hold the power button until it restarts.
+7. Find the TV's IP address under **Settings > General > Network > Network Status > IP Settings**, and tell you.
 
 ### Step 4: Install Tizen Studio and connect
 

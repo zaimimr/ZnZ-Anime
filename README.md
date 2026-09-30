@@ -31,10 +31,12 @@ You need a computer on the same network as the TV and about 30 minutes. Want hel
 
 ### 1. Put the TV in Developer Mode
 
-1. On the TV, open **Apps**.
-2. Press `1` `2` `3` `4` `5` on the remote. A Developer Mode window opens.
-3. Turn Developer Mode **On**, enter your computer's IP address, and press OK.
-4. Restart the TV (hold the power button until it turns off and on).
+1. Press the **Home** button on the remote and go to **Apps**.
+2. Scroll all the way down to **App Settings** and open it.
+3. Type `1` `2` `3` `4` `5`. If the remote has no number keys, press the **123** (or colored) button to bring up the on-screen keypad first.
+4. In the pop-up, switch **Developer Mode** to **On**.
+5. Enter the IP address of your computer (it must be on the same network) and select **OK**.
+6. Restart the TV: turn it off and back on, or hold the power button until it restarts.
 
 ### 2. Set up your server
 
