@@ -127,9 +127,10 @@ Findings from a browser capture and plain `fetch` tests:
 
 ### Trending (Day / Week / Month)
 
-- For each window, query AniList `Page.mediaTrends(date_greater: now - window, sort: TRENDING_DESC)` for a few pages.
-- Sum `trending` per media, rank the top 50, and fetch covers in one `Media(id_in: [...])` query.
-- Cache each window in memory and `localStorage` for 1 hour.
+- AniList's global `Page.mediaTrends` list returns nothing without a `mediaId` filter (checked 2026-09-30), so the app uses per-anime trend history instead.
+- Query `Page.media(sort: TRENDING_DESC)` with `trends(sort: DATE_DESC, perPage: 30) { nodes { date trending } }`: 1 page (50 anime) for Day, 2 for Week, 3 for Month.
+- Sum `trending` for the days inside the window per anime, rank the top 50. Covers come from the same query.
+- Cache each window in `localStorage` for 1 hour.
 
 ## Error handling
 

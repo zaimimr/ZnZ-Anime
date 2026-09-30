@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { anilistIdsForMal, fetchList, fromStatus, mediaByIds, saveEntry, toStatus, trendsPage } from '../src/anilist/api'
+import { anilistIdsForMal, fetchList, fromStatus, mediaByIds, saveEntry, toStatus, trendingWithHistory } from '../src/anilist/api'
 import { setToken } from '../src/auth/tokens'
 
 function gqlReply(data: unknown) {
@@ -55,13 +55,18 @@ describe('anilist api', () => {
     expect((await anilistIdsForMal([99, 98])).get(99)).toBe(10)
   })
 
-  it('returns only non-adult anime trend rows', async () => {
-    vi.stubGlobal('fetch', gqlReply({ Page: { pageInfo: { hasNextPage: true }, mediaTrends: [
-      { mediaId: 1, trending: 50, media: { type: 'ANIME', isAdult: false } },
-      { mediaId: 2, trending: 40, media: { type: 'MANGA', isAdult: false } },
-      { mediaId: 3, trending: 30, media: { type: 'ANIME', isAdult: true } },
-    ] } }))
-    expect(await trendsPage(0, 1)).toEqual({ rows: [{ mediaId: 1, trending: 50 }], hasNext: true })
+  it('returns trending anime with their daily trend history', async () => {
+    const fetchMock = gqlReply({ Page: { pageInfo: { hasNextPage: true }, media: [
+      { ...media(1), trends: { nodes: [{ date: 100, trending: 50 }, { date: 50, trending: 20 }] } },
+    ] } })
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await trendingWithHistory(2)
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(body.variables).toEqual({ page: 2 })
+    expect(new Headers((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers).get('authorization')).toBeNull()
+    expect(result.hasNext).toBe(true)
+    expect(result.items[0].card.id).toBe(1)
+    expect(result.items[0].history).toEqual([{ date: 100, trending: 50 }, { date: 50, trending: 20 }])
   })
 
   it('surfaces GraphQL errors', async () => {

@@ -124,14 +124,19 @@ export async function anilistIdsForMal(malIds: number[]): Promise<Map<number, nu
   return result
 }
 
-export async function trendsPage(since: number, page: number): Promise<{ rows: { mediaId: number; trending: number }[]; hasNext: boolean }> {
-  const data = await gql<{ Page: { pageInfo: { hasNextPage: boolean }; mediaTrends: { mediaId: number; trending: number; media: { type: string; isAdult: boolean } }[] } }>(
-    'query ($since: Int, $page: Int) { Page(page: $page, perPage: 50) { pageInfo { hasNextPage } mediaTrends(date_greater: $since, sort: TRENDING_DESC) { mediaId trending media { type isAdult } } } }',
-    { since, page },
+export interface TrendItem {
+  card: Card
+  history: { date: number; trending: number }[]
+}
+
+export async function trendingWithHistory(page: number): Promise<{ items: TrendItem[]; hasNext: boolean }> {
+  const data = await gql<{ Page: { pageInfo: { hasNextPage: boolean }; media: (MediaNode & { trends: { nodes: { date: number; trending: number }[] } })[] } }>(
+    `query ($page: Int) { Page(page: $page, perPage: 50) { pageInfo { hasNextPage } media(type: ANIME, isAdult: false, sort: TRENDING_DESC) { ${CARD} trends(sort: DATE_DESC, perPage: 30) { nodes { date trending } } } } }`,
+    { page },
     false,
   )
   return {
-    rows: data.Page.mediaTrends.filter((t) => t.media.type === 'ANIME' && !t.media.isAdult).map(({ mediaId, trending }) => ({ mediaId, trending })),
+    items: data.Page.media.map((m) => ({ card: toCard(m), history: m.trends.nodes })),
     hasNext: data.Page.pageInfo.hasNextPage,
   }
 }
