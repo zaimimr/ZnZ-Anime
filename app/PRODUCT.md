@@ -8,7 +8,7 @@ web
 
 ## Users
 
-One person, the owner, watching anime on their own Samsung The Frame TV. They browse, pick up where they left off, and keep their AniList and MyAnimeList lists up to date without touching a phone or computer.
+Anime fans watching on their own Samsung TV. It started as the owner's app for a Samsung The Frame and is now shared on GitHub for others to install. They browse, pick up where they left off, and keep their AniList or MyAnimeList list up to date without touching a phone or computer, or use no account at all.
 
 ## Product Purpose
 
@@ -27,22 +27,22 @@ One app that joins three things usually spread across sites: the AniList list, M
 
 ## Capabilities and Constraints
 
-- AniList is the main list. MAL is kept in sync from it; watched progress is the higher of the two.
-- Personal use only. The app is never published to the Samsung store or shared.
+- Accounts are optional. AniList is the main list when linked, else MAL, else a list stored on the TV. With both linked, changes go to both unless sync is turned off; watched progress is the higher of the two.
+- Shared as a GitHub release that people sign with their own Samsung certificate. Never published to the Samsung store.
 - Episodes are marked watched at 85% on both services.
-- Intro and outro times come from miruro, with AniSkip as backup.
+- Intro and outro times are auto-skipped only when AniSkip has times for the exact video length. Other times only show a Skip prompt.
 - The TV's own player handles HLS on Tizen; hls.js is only used in the dev browser.
 - Samsung TVs cannot copy video frames into a canvas, so any preview image must come from the source (thumbnail sprites), not from the playing video.
 - Planned: watch list by status, new episodes row, filler badges, airing schedule, recommendations.
 
 ## Evidence on Hand
 
-- Live data from AniList, MAL, miruro and AniSkip. No screenshots, reviews or other users exist and none should be invented.
+- Live data from AniList, MAL, miruro and AniSkip. No reviews or user research exist and none should be invented.
 
 ## Product Principles
 
 - Next episode first: the thing most likely wanted is focused on arrival.
 - Only offer what works: hide options a source does not actually have.
-- The list stays true: every watch updates AniList and MAL without extra steps.
+- The list stays true: every watch updates the linked lists without extra steps.
 - The remote is the only input: every action reachable with arrows, OK and Back.
 - Readable across the room in any light.

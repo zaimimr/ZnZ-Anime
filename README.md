@@ -1,13 +1,59 @@
 # ZnZ Anime
 
-Personal anime app for a Samsung The Frame (Tizen). Browse and track with AniList, keep MyAnimeList in sync, and play episodes from a swappable streaming source.
+An anime app for Samsung smart TVs (Tizen), made to be used with the TV remote only.
 
-## Parts
+- Browse trending shows, this season, recommendations and search
+- Play episodes with intro and outro skipping, scrub previews, subtitles, sub or dub, and autoplay of the next episode
+- Keep track with AniList, MyAnimeList, both or neither. Without an account your list is saved on the TV
+- New episodes row, a weekly airing schedule and filler badges
 
-- `app/`: Tizen web app (Vite, React, TypeScript)
-- `worker/`: `znz-auth` Cloudflare Worker for QR login, MAL token refresh and the stream proxy, deployed at `https://znz-auth.zaim-imran.workers.dev`
+Tested on a Samsung The Frame (Tizen 6+) at 1920x1080.
 
-## Develop
+## Install on your TV
+
+You need a computer on the same network as the TV. Samsung only lets you install your own apps with a certificate made for your TV, so you sign the app yourself once.
+
+### 1. Put the TV in Developer Mode
+
+1. On the TV, open **Apps**.
+2. Press `1` `2` `3` `4` `5` on the remote. A Developer Mode window opens.
+3. Turn Developer Mode **On**, enter your computer's IP address, and press OK.
+4. Restart the TV (hold the power button until it turns off and on).
+
+### 2. Install Tizen Studio and make a certificate
+
+1. Install [Tizen Studio](https://developer.tizen.org/development/tizen-studio/download) (the CLI version is enough).
+2. In the Tizen Studio **Package Manager**, open **Extension SDK** and install **Samsung Certificate Extension**.
+3. Connect to the TV: `~/tizen-studio/tools/sdb connect <tv-ip>`
+4. Open **Certificate Manager**, create a new **Samsung** certificate profile, log in with a Samsung account and choose **TV** as the device type. The TV you connected is added to the certificate. Remember the profile name.
+
+### 3. Install the app
+
+1. Download `ZnZAnime-<version>.zip` from the [latest release](https://github.com/zaimimr/znz-anime/releases/latest) and unzip it into a folder called `ZnZAnime`.
+2. Sign and install it:
+
+   ```bash
+   TIZEN=~/tizen-studio/tools/ide/bin/tizen
+   $TIZEN package -t wgt -s <your-profile> -- ZnZAnime
+   $TIZEN install -n ZnZAnime/*.wgt -t $(~/tizen-studio/tools/sdb devices | awk 'NR==2 {print $3}')
+   ```
+
+3. ZnZ Anime shows up under **Apps** on the TV.
+
+To update, download the new release and repeat step 3. Your list and settings are kept.
+
+## Using the app
+
+On first start, pick **AniList**, **MyAnimeList** or **No account**. You can change this any time in **Settings > Accounts**.
+
+- **Logging in**: scan the QR code on the TV with your phone, log in, and the TV moves on by itself.
+- **Both accounts**: AniList is the main list and every change also goes to MAL. Turn this off, or merge the two lists once, in **Settings > List sync**.
+- **No account**: the list lives on the TV. If you link an account later, **Settings > List sync** can copy it over.
+- **Remote**: arrows to move, OK to choose, Back to go back. In the player, hold left or right to scrub, press down for playback settings.
+
+Intro and outro times come from [AniSkip](https://aniskip.com). They are skipped automatically only when they match the exact video that is playing. Otherwise the app shows a **Skip** button instead.
+
+## Build from source
 
 ```bash
 pnpm install
@@ -15,31 +61,40 @@ pnpm test
 cp app/.env.example app/.env.local   # set VITE_AUTH_URL
 pnpm dev                              # open http://localhost:5173 at 1920x1080, use arrow keys, Enter and Escape
 pnpm check:sources                    # checks each streaming source against the live site
+TIZEN_PROFILE=<your-profile> pnpm --filter app package:tv   # builds and signs app/dist/ZnZAnime.wgt
 ```
 
-## Worker
+### Parts
 
-```bash
-cd worker
-npx wrangler secret put ANILIST_CLIENT_ID
-npx wrangler secret put ANILIST_CLIENT_SECRET
-npx wrangler secret put MAL_CLIENT_ID
-npx wrangler secret put MAL_CLIENT_SECRET
-npx wrangler deploy
-```
+- `app/`: the TV app (Vite, React, TypeScript)
+- `worker/`: a Cloudflare Worker for QR login, MAL token refresh and a stream proxy for sources that need a Referer header
 
-OAuth apps:
+### Run your own worker
 
-- AniList: https://anilist.co/settings/developer, redirect URL `https://znz-auth.zaim-imran.workers.dev/callback/anilist`
-- MAL: https://myanimelist.net/apiconfig, app type web, redirect URL `https://znz-auth.zaim-imran.workers.dev/callback/mal`
+Release builds use the hosted worker at `https://znz-auth.zaim-imran.workers.dev`. To use your own:
 
-## Install on the TV
+1. Create an AniList app at https://anilist.co/settings/developer with redirect URL `https://<your-worker>/callback/anilist`.
+2. Create a MAL app at https://myanimelist.net/apiconfig (type **web**) with redirect URL `https://<your-worker>/callback/mal`.
+3. Create a KV namespace, put its id in `worker/wrangler.jsonc`, then:
 
-1. TV in Developer Mode with this Mac's IP, then `~/tizen-studio/tools/sdb connect <tv-ip>`.
-2. `pnpm --filter app package:tv` builds and signs `app/dist/ZnZAnime.wgt` with the `TVMate` certificate profile (override with `TIZEN_PROFILE`).
-3. `~/tizen-studio/tools/ide/bin/tizen install -n app/dist/ZnZAnime.wgt -t <device from sdb devices>`
-4. ZnZ Anime shows up under Apps.
+   ```bash
+   cd worker
+   npx wrangler secret put ANILIST_CLIENT_ID
+   npx wrangler secret put MAL_CLIENT_ID
+   npx wrangler secret put MAL_CLIENT_SECRET
+   npx wrangler deploy
+   ```
 
-## Add a source
+4. Set `VITE_AUTH_URL` in `app/.env.production` to your worker and build the app.
+
+### Add a source
 
 Create `app/src/sources/<name>/index.ts` that implements `SourceAdapter` from `app/src/sources/types.ts`, register it in `app/src/sources/registry.ts`, and run `pnpm check:sources`.
+
+### Release
+
+Push a tag like `v1.0.0`. GitHub Actions runs the tests, builds the app and attaches `ZnZAnime-v1.0.0.zip` to a new release.
+
+## Disclaimer
+
+ZnZ Anime does not host any video. It plays streams that third-party sites make public, and the app works only as long as those sites do. Check that streaming this content is legal where you live.
