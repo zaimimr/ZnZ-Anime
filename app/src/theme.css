@@ -1,0 +1,23 @@
+:root {
+  --bg: #0b0d12;
+  --panel: #151922;
+  --text: #f2f4f8;
+  --muted: #8a93a6;
+  --accent: #ff4d6d;
+  --focus: #ffffff;
+}
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 28px; }
+.screen { width: 100%; height: 100%; padding: 48px 80px; overflow: hidden; }
+.focusable { outline: none; border: 4px solid transparent; border-radius: 12px; transition: transform 120ms, border-color 120ms; }
+.focusable.focused { border-color: var(--focus); transform: scale(1.06); }
+.btn { background: var(--panel); color: var(--text); padding: 14px 28px; font-size: 28px; cursor: pointer; }
+.btn.active { background: var(--accent); }
+.muted { color: var(--muted); }
+.row { margin-bottom: 36px; }
+.row h2 { margin: 0 0 16px; font-size: 36px; }
+.row-track { display: flex; gap: 24px; overflow: hidden; padding: 12px 8px; }
+.poster { flex: 0 0 220px; }
+.poster img { width: 220px; height: 312px; object-fit: cover; border-radius: 8px; display: block; }
+.poster span { display: block; font-size: 22px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px; }

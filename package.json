@@ -1,0 +1,10 @@
+{
+  "name": "znz-anime",
+  "private": true,
+  "scripts": {
+    "test": "pnpm -r test",
+    "dev": "pnpm --filter app dev",
+    "build": "pnpm --filter app build",
+    "check:sources": "pnpm --filter app check:sources"
+  }
+}
