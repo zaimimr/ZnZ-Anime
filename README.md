@@ -7,8 +7,8 @@
 <p align="center">An anime app for Samsung smart TVs (Tizen), made to be used with the TV remote only.</p>
 
 <p align="center">
-  <a href="https://github.com/zaimimr/znz-anime/releases/latest"><img src="https://img.shields.io/github/v/release/zaimimr/znz-anime" alt="Latest release" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/zaimimr/znz-anime" alt="MIT license" /></a>
+  <a href="https://github.com/zaimimr/ZnZ-Anime/releases/latest"><img src="https://img.shields.io/github/v/release/zaimimr/ZnZ-Anime" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/zaimimr/ZnZ-Anime" alt="MIT license" /></a>
 </p>
 
 ![Home screen](docs/screenshots/home.jpg)
@@ -44,8 +44,8 @@ The app needs a small server to play videos (streaming sites only answer request
 2. Get the code and deploy:
 
    ```bash
-   git clone https://github.com/zaimimr/znz-anime.git
-   cd znz-anime && pnpm install
+   git clone https://github.com/zaimimr/ZnZ-Anime.git
+   cd ZnZ-Anime && pnpm install
    cd worker
    npx wrangler login
    npx wrangler kv namespace create PAIRS
@@ -70,7 +70,7 @@ Samsung only lets you install your own apps with a certificate made for your TV,
 
 ### 4. Install the app
 
-1. Download `ZnZAnime-<version>.zip` from the [latest release](https://github.com/zaimimr/znz-anime/releases/latest) and unzip it into a folder called `ZnZAnime`.
+1. Download `ZnZAnime-<version>.zip` from the [latest release](https://github.com/zaimimr/ZnZ-Anime/releases/latest) and unzip it into a folder called `ZnZAnime`.
 2. Sign and install it:
 
    ```bash

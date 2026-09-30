@@ -2,7 +2,7 @@
 
 Give this file to an AI coding assistant that can run commands on your computer (for example Claude Code, Codex or Cursor), and say:
 
-> Read INSTALL_WITH_AI.md from https://github.com/zaimimr/znz-anime and help me install ZnZ Anime on my Samsung TV.
+> Read INSTALL_WITH_AI.md from https://github.com/zaimimr/ZnZ-Anime and help me install ZnZ Anime on my Samsung TV.
 
 The rest of this file is written for the assistant.
 
@@ -39,8 +39,8 @@ pnpm --version     # if missing: npm install -g pnpm
 ### Step 1: Get the code
 
 ```bash
-git clone https://github.com/zaimimr/znz-anime.git
-cd znz-anime
+git clone https://github.com/zaimimr/ZnZ-Anime.git
+cd ZnZ-Anime
 pnpm install
 pnpm test
 ```
@@ -117,7 +117,7 @@ Check the profile exists with `~/tizen-studio/tools/ide/bin/tizen security-profi
 Either use the release zip:
 
 ```bash
-curl -L -o ZnZAnime.zip "$(curl -s https://api.github.com/repos/zaimimr/znz-anime/releases/latest | grep -o 'https://[^"]*\.zip' | head -n 1)"
+curl -L -o ZnZAnime.zip "$(curl -s https://api.github.com/repos/zaimimr/ZnZ-Anime/releases/latest | grep -o 'https://[^"]*\.zip' | head -n 1)"
 rm -rf ZnZAnime && mkdir ZnZAnime && unzip -q ZnZAnime.zip -d ZnZAnime
 ~/tizen-studio/tools/ide/bin/tizen package -t wgt -s ZnZ -- ZnZAnime
 ```

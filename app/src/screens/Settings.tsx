@@ -18,7 +18,7 @@ import { Focusable } from '../ui/Focusable'
 import { Icon, type IconName } from '../ui/Icon'
 import { providerNames } from './Pair'
 
-const REPO = 'github.com/zaimimr/znz-anime'
+const REPO = 'github.com/zaimimr/ZnZ-Anime'
 
 type Section = 'accounts' | 'server' | 'playback' | 'sync' | 'sources' | 'about'
 
