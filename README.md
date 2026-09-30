@@ -74,6 +74,7 @@ On first start, pick **AniList**, **MyAnimeList** or **No account**. You can cha
 - **Logging in**: scan the QR code on the TV with your phone, log in, and the TV moves on by itself.
 - **Both accounts**: AniList is the main list and every change also goes to MAL. Turn this off, or merge the two lists once, in **Settings > List sync**.
 - **No account**: the list lives on the TV. If you link an account later, **Settings > List sync** can copy it over.
+- **Sources**: if a source site moves or is blocked, open **Settings > Sources**, choose it and change its address to a mirror (for Miruro, for example `www.miruro.tv`). The app checks the address before saving it.
 - **Remote**: arrows to move, OK to choose, Back to go back. In the player, hold left or right to scrub, press down for playback settings.
 
 Intro and outro times come from [AniSkip](https://aniskip.com). They are skipped automatically only when they match the exact video that is playing. Otherwise the app shows a **Skip** button instead.
@@ -100,7 +101,7 @@ Instead of typing the address on the TV, you can build it in: put `VITE_AUTH_URL
 
 ### Add a source
 
-Create `app/src/sources/<name>/index.ts` that implements `SourceAdapter` from `app/src/sources/types.ts`, register it in `app/src/sources/registry.ts`, and run `pnpm check:sources`.
+Create `app/src/sources/<name>/index.ts` that implements `SourceAdapter` from `app/src/sources/types.ts`: a `name`, a `defaultHost`, a `check(host)` that tells whether an address serves that source, and `resolve`, `episodes` and `stream`. Read the address with `sourceHost()` from `app/src/sources/host.ts` so people can point it at a mirror. Register it in `app/src/sources/registry.ts` and run `pnpm check:sources`.
 
 ### Release
 

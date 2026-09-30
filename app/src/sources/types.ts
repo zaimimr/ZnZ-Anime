@@ -7,6 +7,9 @@ export interface Stream { provider: string; url: string; format: 'hls' | 'mp4'; 
 export interface MediaRef { anilistId: number; titles: string[] }
 export interface SourceAdapter {
   id: string
+  name: string
+  defaultHost: string
+  check(host: string): Promise<boolean>
   resolve(media: MediaRef): Promise<SourceShow | null>
   episodes(show: SourceShow): Promise<Episode[]>
   stream(show: SourceShow, ep: number, lang: Lang): Promise<Stream[]>

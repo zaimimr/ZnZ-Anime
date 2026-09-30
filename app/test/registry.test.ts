@@ -5,6 +5,9 @@ import type { SourceAdapter } from '../src/sources/types'
 
 const fake = (id: string, found: boolean): SourceAdapter => ({
   id,
+  name: id,
+  defaultHost: `https://${id}.test`,
+  check: vi.fn(async () => true),
   resolve: vi.fn(async () => (found ? { source: id, id: `${id}-show` } : null)),
   episodes: vi.fn(async () => [{ number: 1 }]),
   stream: vi.fn(async () => []),

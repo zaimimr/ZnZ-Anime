@@ -55,14 +55,14 @@ function Row({ title, detail, children, onEnter, focusKey }: { title: string; de
 const urlRows = keyboardRows.map((row) => row.map((key) => (key === ':' ? '.' : key)).filter((key) => key !== 'space'))
 const keyLabels: Record<string, string> = { del: 'Delete', clear: 'Clear' }
 
-function ServerEditor({ initial, onDone }: { initial: string; onDone: (url: string | null) => void }) {
+function AddressEditor({ initial, check, failText, onDone }: { initial: string; check: (url: string) => Promise<boolean>; failText: string; onDone: (url: string | null) => void }) {
   const [text, setText] = useState(initial.replace(/^https:\/\//, ''))
   const [status, setStatus] = useState('')
   const save = async () => {
     const url = serverUrl(text)
-    setStatus('Checking the server...')
-    if (await checkServer(url)) onDone(url)
-    else setStatus('That address did not answer like a ZnZ Anime server. Check it and try again.')
+    setStatus('Checking the address...')
+    if (await check(url)) onDone(url)
+    else setStatus(failText)
   }
   return (
     <div className="server-editor">
@@ -118,7 +118,7 @@ function Rail({ current, onPick }: { current: Section; onPick: (s: Section) => v
 }
 
 export function SettingsScreen() {
-  const { push, reset } = useRouter()
+  const { push, reset, setBackHandler } = useRouter()
   const [section, setSection] = useState<Section>('accounts')
   const [settings, setSettings] = useState(getSettings())
   const [names, setNames] = useState<Record<Provider, string>>({ anilist: '', mal: '' })
@@ -128,6 +128,8 @@ export function SettingsScreen() {
   const [local, setLocal] = useState(readLocal().length)
   const [confirmReset, setConfirmReset] = useState(false)
   const [editingServer, setEditingServer] = useState(false)
+  const [sourceView, setSourceView] = useState<string | null>(null)
+  const [editingSource, setEditingSource] = useState(false)
   const [server, setServer] = useState(hosts.auth)
   const [confirmUnlink, setConfirmUnlink] = useState<Provider | null>(null)
 
@@ -140,7 +142,20 @@ export function SettingsScreen() {
     setConfirmReset(false)
     setConfirmUnlink(null)
     setEditingServer(false)
+    setSourceView(null)
+    setEditingSource(false)
   }, [section])
+
+  useEffect(() => {
+    if (!editingServer && !sourceView) return
+    setBackHandler(() => {
+      if (editingSource) setEditingSource(false)
+      else if (sourceView) setSourceView(null)
+      else setEditingServer(false)
+      return true
+    })
+    return () => setBackHandler(null)
+  }, [editingServer, sourceView, editingSource, setBackHandler])
 
   const update = (change: Partial<Settings>) => {
     const next = { ...settings, ...change }
@@ -245,8 +260,10 @@ export function SettingsScreen() {
       </>
     ),
     server: editingServer ? (
-      <ServerEditor
+      <AddressEditor
         initial={server}
+        check={checkServer}
+        failText="That address did not answer like a ZnZ Anime server. Check it and try again"
         onDone={(url) => {
           setEditingServer(false)
           if (url === null) return setFocus('server-row')
@@ -339,12 +356,53 @@ export function SettingsScreen() {
         )}
       </>
     ),
-    sources: (
+    sources: sourceView ? (() => {
+      const adapters = orderedAdapters()
+      const index = adapters.findIndex((a) => a.id === sourceView)
+      const adapter = adapters[index]
+      const custom = settings.sourceHosts[adapter.id]
+      const address = (custom || adapter.defaultHost).replace(/^https:\/\//, '')
+      const setHost = (url: string) => update({ sourceHosts: { ...settings.sourceHosts, [adapter.id]: url } })
+      if (editingSource) {
+        return (
+          <AddressEditor
+            initial={custom || adapter.defaultHost}
+            check={adapter.check}
+            failText={`That address did not answer like ${adapter.name}. Check it and try again.`}
+            onDone={(url) => {
+              setEditingSource(false)
+              if (url) setHost(url === adapter.defaultHost ? '' : url)
+            }}
+          />
+        )
+      }
+      return (
+        <>
+          <p className="pane-lead">{adapter.name}{custom ? ' is using your own address.' : ' is using its default address.'}</p>
+          <Row title="Address" detail={address} onEnter={() => setEditingSource(true)}>
+            <span className="pill">Change</span>
+          </Row>
+          {custom && (
+            <Row title="Use the default address" detail={adapter.defaultHost.replace(/^https:\/\//, '')} onEnter={() => setHost('')}>
+              <span className="pill">Reset</span>
+            </Row>
+          )}
+          {index > 0 && (
+            <Row title="Try this source earlier" detail={`Now number ${index + 1} of ${adapters.length}`} onEnter={() => moveUp(adapter.id)}>
+              <span className="pill with-icon"><Icon name="up" size={22} /> Move up</span>
+            </Row>
+          )}
+          <Row title="Back to sources" onEnter={() => setSourceView(null)}>
+            <Icon name="back" size={28} />
+          </Row>
+        </>
+      )
+    })() : (
       <>
-        <p className="pane-lead">The app tries these in order until one has the episode.</p>
+        <p className="pane-lead">Where episodes come from. The app tries these in order until one has the episode. Choose one to change its address, for example to a mirror site.</p>
         {orderedAdapters().map((adapter, i) => (
-          <Row key={adapter.id} title={`${i + 1}. ${adapter.id.charAt(0).toUpperCase()}${adapter.id.slice(1)}`} detail={i === 0 ? 'Tried first' : undefined} onEnter={() => i > 0 && moveUp(adapter.id)}>
-            {i > 0 && <span className="pill with-icon"><Icon name="up" size={22} /> Move up</span>}
+          <Row key={adapter.id} title={`${i + 1}. ${adapter.name}`} detail={(settings.sourceHosts[adapter.id] || adapter.defaultHost).replace(/^https:\/\//, '')} onEnter={() => setSourceView(adapter.id)}>
+            <Icon name="right" size={28} />
           </Row>
         ))}
       </>

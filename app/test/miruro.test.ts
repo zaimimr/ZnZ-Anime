@@ -94,4 +94,18 @@ describe('miruro adapter', () => {
     expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('https://www.miruro.to/api/v1/anime/o2Eq/episodes/3/play')
     expect(streams).toHaveLength(3)
   })
+  it('uses a mirror address from settings', async () => {
+    localStorage.setItem('znz.settings', JSON.stringify({ sourceHosts: { miruro: 'https://www.miruro.tv' } }))
+    const fetchMock = vi.fn(async () => Response.json({ data: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await miruro.check('https://www.miruro.tv')).toBe(true)
+    await miruro.resolve({ anilistId: 1, titles: ['A'] })
+    expect((fetchMock.mock.calls[1] as unknown[])[0]).toBe('https://www.miruro.tv/api/v1/anime?q=A&limit=5&sort=-popularity')
+    localStorage.removeItem('znz.settings')
+  })
+
+  it('rejects an address that is not a miruro API', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } })))
+    expect(await miruro.check('https://example.com')).toBe(false)
+  })
 })
