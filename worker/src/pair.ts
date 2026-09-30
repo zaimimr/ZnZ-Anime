@@ -7,7 +7,6 @@ export interface KVLike {
 export interface Env {
   PAIRS: KVLike
   ANILIST_CLIENT_ID: string
-  ANILIST_CLIENT_SECRET: string
   MAL_CLIENT_ID: string
   MAL_CLIENT_SECRET: string
 }
@@ -72,50 +71,38 @@ export async function createPair(req: Request, env: Env): Promise<Response> {
 export async function login(req: Request, env: Env, code: string): Promise<Response> {
   const record = await readPair(env, code)
   if (!record) return new Response('Code expired. Start again on the TV.', { status: 404 })
-  const redirectUri = `${new URL(req.url).origin}/callback/${record.provider}`
-  const url =
-    record.provider === 'anilist'
-      ? new URL('https://anilist.co/api/v2/oauth/authorize')
-      : new URL('https://myanimelist.net/v1/oauth2/authorize')
-  url.searchParams.set('response_type', 'code')
-  url.searchParams.set('redirect_uri', redirectUri)
-  url.searchParams.set('state', code)
   if (record.provider === 'anilist') {
+    const url = new URL('https://anilist.co/api/v2/oauth/authorize')
     url.searchParams.set('client_id', env.ANILIST_CLIENT_ID)
-  } else {
-    url.searchParams.set('client_id', env.MAL_CLIENT_ID)
-    url.searchParams.set('code_challenge', record.verifier!)
-    url.searchParams.set('code_challenge_method', 'plain')
+    url.searchParams.set('response_type', 'token')
+    return new Response(null, {
+      status: 302,
+      headers: { location: url.toString(), 'set-cookie': `znz_pair=${code}; Path=/callback; Max-Age=${PENDING_TTL}; Secure; HttpOnly; SameSite=Lax` },
+    })
   }
+  const url = new URL('https://myanimelist.net/v1/oauth2/authorize')
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('redirect_uri', `${new URL(req.url).origin}/callback/mal`)
+  url.searchParams.set('state', code)
+  url.searchParams.set('client_id', env.MAL_CLIENT_ID)
+  url.searchParams.set('code_challenge', record.verifier!)
+  url.searchParams.set('code_challenge_method', 'plain')
   return Response.redirect(url.toString(), 302)
 }
 
 async function exchange(record: PairRecord, env: Env, oauthCode: string, redirectUri: string): Promise<{ tokens: Tokens } | { error: string }> {
-  const res =
-    record.provider === 'anilist'
-      ? await fetch('https://anilist.co/api/v2/oauth/token', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify({
-            grant_type: 'authorization_code',
-            client_id: env.ANILIST_CLIENT_ID,
-            client_secret: env.ANILIST_CLIENT_SECRET,
-            redirect_uri: redirectUri,
-            code: oauthCode,
-          }),
-        })
-      : await fetch('https://myanimelist.net/v1/oauth2/token', {
-          method: 'POST',
-          headers: { 'content-type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            client_id: env.MAL_CLIENT_ID,
-            client_secret: env.MAL_CLIENT_SECRET,
-            grant_type: 'authorization_code',
-            code: oauthCode,
-            code_verifier: record.verifier!,
-            redirect_uri: redirectUri,
-          }).toString(),
-        })
+  const res = await fetch('https://myanimelist.net/v1/oauth2/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: env.MAL_CLIENT_ID,
+      client_secret: env.MAL_CLIENT_SECRET,
+      grant_type: 'authorization_code',
+      code: oauthCode,
+      code_verifier: record.verifier!,
+      redirect_uri: redirectUri,
+    }).toString(),
+  })
   const text = await res.text()
   if (!res.ok) {
     const body = (() => {
@@ -153,6 +140,31 @@ export async function callback(req: Request, env: Env, provider: string): Promis
   }
   await env.PAIRS.put(`pair:${code}`, JSON.stringify({ ...record, tokens: result.tokens }), { expirationTtl: DONE_TTL })
   return page('Done. Look at your TV.')
+}
+
+const anilistCallbackScript = `
+const params = new URLSearchParams(location.hash.slice(1))
+const token = params.get('access_token')
+const message = document.getElementById('message')
+history.replaceState(null, '', location.pathname)
+if (!token) message.textContent = 'Login failed. Start again on the TV.'
+else fetch('/callback/anilist/token', { method: 'POST', body: JSON.stringify({ accessToken: token, expiresIn: Number(params.get('expires_in')) || 31536000 }) })
+  .then((res) => { message.textContent = res.ok ? 'Done. Look at your TV.' : 'Code expired. Start again on the TV.' })
+  .catch(() => { message.textContent = 'Login failed. Start again on the TV.' })
+`
+
+export function anilistCallbackPage(): Response {
+  return page(`<p id="message">Finishing login...</p><script>${anilistCallbackScript}</script>`)
+}
+
+export async function saveAnilistToken(req: Request, env: Env): Promise<Response> {
+  const code = req.headers.get('cookie')?.match(/(?:^|;\s*)znz_pair=([A-Z0-9]+)/)?.[1]
+  const record = code ? await readPair(env, code) : null
+  const { accessToken, expiresIn } = (await req.json().catch(() => ({}))) as { accessToken?: string; expiresIn?: number }
+  if (!code || !record || record.provider !== 'anilist' || !accessToken) return json({ error: 'pair expired' }, 404)
+  const tokens: Tokens = { accessToken, expiresAt: Date.now() + (expiresIn || 31536000) * 1000 }
+  await env.PAIRS.put(`pair:${code}`, JSON.stringify({ ...record, tokens }), { expirationTtl: DONE_TTL })
+  return Response.json({ ok: true }, { headers: { 'set-cookie': 'znz_pair=; Path=/callback; Max-Age=0; Secure; HttpOnly; SameSite=Lax' } })
 }
 
 export async function poll(env: Env, code: string): Promise<Response> {

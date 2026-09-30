@@ -4,7 +4,7 @@ import { b64urlDecode, b64urlEncode } from '../src/b64'
 import { rewritePlaylist } from '../src/proxy'
 import { memoryKV } from './kv'
 
-const env = { PAIRS: memoryKV(), ANILIST_CLIENT_ID: '', ANILIST_CLIENT_SECRET: '', MAL_CLIENT_ID: '', MAL_CLIENT_SECRET: '' }
+const env = { PAIRS: memoryKV(), ANILIST_CLIENT_ID: '', MAL_CLIENT_ID: '', MAL_CLIENT_SECRET: '' }
 afterEach(() => vi.unstubAllGlobals())
 
 function target(line: string) {

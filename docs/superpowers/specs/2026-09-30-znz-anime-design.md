@@ -90,7 +90,11 @@ Findings from a browser capture and plain `fetch` tests:
 
 ## Data flow
 
-### Login (AniList and MAL, same flow)
+### Login
+
+AniList blocks OAuth token requests from Cloudflare Workers (403, seen 2026-09-30), so AniList uses the implicit grant: `/login/:code` sets an HttpOnly `znz_pair` cookie and redirects with `response_type=token`, AniList returns the token in the URL fragment to `/callback/anilist`, and that page posts it to `/callback/anilist/token`. The Worker never calls AniList and holds no AniList secret. MAL keeps the code flow below.
+
+#### MAL code flow
 
 1. TV calls `POST /pair` on the Worker and receives `{ code, pairUrl }`.
 2. TV shows a QR code for `pairUrl` and the short code.
