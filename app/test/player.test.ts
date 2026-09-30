@@ -25,8 +25,9 @@ describe('player logic', () => {
   })
 
   it('starts the next episode countdown at the outro unless a scene follows it', () => {
-    const ed = (end: number) => [{ kind: 'op' as const, start: 0, end: 90 }, { kind: 'ed' as const, start: 1370, end }]
+    const ed = (end: number) => [{ kind: 'op' as const, start: 0, end: 90 }, { kind: 'ed' as const, start: 1370, end, verified: true }]
     expect(countdownAt(ed(1460), 1470)).toBe(1370)
+    expect(countdownAt([{ kind: 'ed', start: 1370, end: 1460 }], 1470)).toBeNull()
     expect(countdownAt(ed(1400), 1470)).toBeNull()
     expect(countdownAt([{ kind: 'op', start: 0, end: 90 }], 1470)).toBeNull()
     expect(countdownAt(ed(1460), Number.NaN)).toBeNull()
@@ -105,19 +106,28 @@ describe('playableUrl', () => {
 describe('aniskip', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('reads op and ed times', async () => {
-    const fetchMock = vi.fn(async () => Response.json({ results: [{ skipType: 'op', interval: { startTime: 1.5, endTime: 91.5 } }, { skipType: 'recap', interval: { startTime: 0, endTime: 1 } }] }))
+  it('reads op and ed times for this video length only', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ results: [
+      { skipType: 'op', interval: { startTime: 1.5, endTime: 91.5 }, episodeLength: 1440.4 },
+      { skipType: 'ed', interval: { startTime: 1417, endTime: 1507 }, episodeLength: 1510.1 },
+      { skipType: 'recap', interval: { startTime: 0, endTime: 1 }, episodeLength: 1440 },
+    ] }))
     vi.stubGlobal('fetch', fetchMock)
-    expect(await aniskip(52991, 4)).toEqual([{ kind: 'op', start: 1.5, end: 91.5 }])
-    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('https://api.aniskip.com/v2/skip-times/52991/4?types=op&types=ed&episodeLength=0')
+    expect(await aniskip(52991, 4, 1441.7)).toEqual([{ kind: 'op', start: 1.5, end: 91.5, verified: true }])
+    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('https://api.aniskip.com/v2/skip-times/52991/4?types=op&types=ed&episodeLength=1442')
   })
 
-  it('fills only the kinds the source is missing', () => {
+  it('prefers times matched to the video over source times', () => {
     const op = { kind: 'op' as const, start: 1, end: 91 }
     const ed = { kind: 'ed' as const, start: 1370, end: 1460 }
-    expect(mergeSkips([op], [{ ...op, start: 5 }, ed])).toEqual([op, ed])
-    expect(mergeSkips(undefined, [ed])).toEqual([ed])
+    const matched = { ...op, start: 43, end: 133, verified: true }
+    expect(mergeSkips([op, ed], [matched])).toEqual([matched, ed])
+    expect(mergeSkips(undefined, [matched])).toEqual([matched])
     expect(mergeSkips(undefined, [])).toBeUndefined()
+  })
+
+  it('drops source times that do not fit the video', () => {
+    expect(mergeSkips([{ kind: 'ed', start: 1417, end: 1507 }], [], 1440)).toBeUndefined()
   })
 })
 

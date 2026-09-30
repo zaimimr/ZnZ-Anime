@@ -14,7 +14,7 @@ export function hasSceneAfterOutro(ed: SkipRange, duration: number): boolean {
 }
 
 export function countdownAt(ranges: SkipRange[] | undefined, duration: number): number | null {
-  const ed = ranges?.find((r) => r.kind === 'ed')
+  const ed = ranges?.find((r) => r.kind === 'ed' && r.verified)
   if (!ed || !(duration > 0)) return null
   return hasSceneAfterOutro(ed, duration) ? null : ed.start
 }
