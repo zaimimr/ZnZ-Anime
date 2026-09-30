@@ -34,10 +34,37 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px; }
 .player { position: fixed; inset: 0; background: #000; }
 .player video { width: 100%; height: 100%; }
-.player .overlay { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 80px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.85)); }
-.player .bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin-top: 16px; }
-.player .bar > div { height: 100%; background: var(--accent); }
-.player .badge { position: absolute; top: 40px; right: 80px; background: rgba(0, 0, 0, 0.7); padding: 12px 24px; border-radius: 8px; }
-.player .skip { position: absolute; right: 80px; bottom: 160px; background: var(--text); color: var(--bg); padding: 16px 32px; border-radius: 8px; font-weight: 700; }
+.player .chrome { position: absolute; inset: 0; pointer-events: none; }
+.player .top { position: absolute; top: 0; left: 0; right: 0; padding: 48px 80px 120px; background: linear-gradient(rgba(0, 0, 0, 0.8), transparent); }
+.player .show-title { font-size: 40px; font-weight: 700; margin-bottom: 6px; }
+.player .bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 140px 80px 48px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.85)); }
+.player .sections { position: relative; display: flex; gap: 6px; height: 10px; }
+.player .section { position: relative; flex-basis: 0; min-width: 8px; height: 100%; background: rgba(255, 255, 255, 0.25); border-radius: 5px; }
+.player .section .buffered, .player .section .played { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
+.player .section .buffered { background: rgba(255, 255, 255, 0.35); }
+.player .section .played { background: var(--accent); }
+.player .section.op, .player .section.ed { background: rgba(255, 196, 0, 0.3); }
+.player .section.op .played, .player .section.ed .played { background: #ffc400; }
+.player .section > span { position: absolute; bottom: 18px; left: 0; font-size: 20px; color: #ffc400; font-weight: 600; white-space: nowrap; }
+.player .knob { position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #fff; }
+.player .meta { display: flex; justify-content: space-between; margin-top: 20px; font-size: 28px; }
+.player .hints { margin-top: 10px; font-size: 20px; }
+.player .badge { position: absolute; top: 48px; right: 80px; background: rgba(0, 0, 0, 0.75); padding: 12px 24px; border-radius: 8px; }
+.player .skip { position: absolute; right: 80px; bottom: 260px; background: var(--text); color: var(--bg); padding: 16px 32px; border-radius: 8px; font-weight: 700; }
+.player .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; font-size: 28px; }
+.player .spinner { width: 72px; height: 72px; border: 6px solid rgba(255, 255, 255, 0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.player .paused { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 140px; height: 140px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; font-size: 56px; }
+.player .up-next { position: absolute; right: 80px; bottom: 260px; display: flex; gap: 24px; align-items: center; background: rgba(15, 17, 22, 0.95); padding: 20px; border-radius: 12px; width: 720px; }
+.player .up-next img { width: 280px; height: 158px; object-fit: cover; border-radius: 8px; }
+.player .up-title { font-size: 30px; font-weight: 700; margin: 6px 0; }
+.player .small { font-size: 20px; }
+.player .panel { position: absolute; top: 0; right: 0; bottom: 0; width: 720px; padding: 64px 48px; background: rgba(12, 14, 19, 0.96); }
+.player .panel h2 { margin: 0 0 32px; font-size: 40px; }
+.player .panel-row { display: flex; justify-content: space-between; gap: 24px; padding: 22px 24px; border-radius: 10px; border: 3px solid transparent; font-size: 26px; }
+.player .panel-row > span:last-child { color: var(--muted); text-align: right; }
+.player .panel-row.focused { border-color: #fff; background: rgba(255, 255, 255, 0.08); }
+.player .panel-row.focused > span:last-child { color: var(--text); }
+.player .panel-row.fixed > span:last-child { opacity: 0.6; }
 video::cue { font-size: 44px; background: rgba(0, 0, 0, 0.6); }
 .focusable.btn { display: inline-block; }

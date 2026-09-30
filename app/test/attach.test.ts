@@ -25,6 +25,16 @@ import { attachStream } from '../src/player/attach'
 beforeEach(() => { instances.length = 0 })
 
 describe('attachStream', () => {
+  it('uses the TV player for HLS on Tizen', () => {
+    const el = document.createElement('video')
+    el.canPlayType = () => 'maybe'
+    window.tizen = {} as NonNullable<typeof window.tizen>
+    attachStream(el, 'https://x/a.m3u8', 'hls', vi.fn())
+    delete window.tizen
+    expect(instances).toHaveLength(0)
+    expect(el.src).toBe('https://x/a.m3u8')
+  })
+
   it('lets hls.js recover media errors 3 times before giving up', () => {
     const el = document.createElement('video')
     const onFatal = vi.fn()

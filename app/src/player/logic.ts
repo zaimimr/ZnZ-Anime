@@ -20,6 +20,35 @@ export function playTarget(watched: number, available: number | undefined, total
   return total !== undefined && watched >= total ? 1 : Math.max(available, 1)
 }
 
+export interface Section { kind: 'main' | 'op' | 'ed'; start: number; end: number }
+
+export function sections(ranges: SkipRange[] | undefined, duration: number): Section[] {
+  if (!(duration > 0)) return []
+  const result: Section[] = []
+  let cursor = 0
+  for (const r of [...(ranges ?? [])].sort((a, b) => a.start - b.start)) {
+    const start = Math.max(r.start, cursor)
+    const end = Math.min(r.end, duration)
+    if (end - start < 1) continue
+    if (start - cursor >= 1) result.push({ kind: 'main', start: cursor, end: start })
+    else if (result.length) result[result.length - 1].end = start
+    result.push({ kind: r.kind, start: result.length ? start : 0, end })
+    cursor = end
+  }
+  if (duration - cursor >= 1) result.push({ kind: 'main', start: cursor, end: duration })
+  else if (result.length) result[result.length - 1].end = duration
+  return result
+}
+
+export function providers(streams: Stream[]): string[] {
+  return [...new Set(streams.map((s) => s.provider))]
+}
+
+export function cycle<T>(options: T[], current: T, dir: 1 | -1): T {
+  const i = options.indexOf(current)
+  return options[(i + dir + options.length) % options.length]
+}
+
 export function statusAfter(ep: number, total: number | undefined): Status {
   return total !== undefined && ep >= total ? 'completed' : 'watching'
 }
