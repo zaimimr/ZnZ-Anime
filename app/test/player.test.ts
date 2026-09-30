@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseThumbs, thumbAt } from '../src/player/thumbnails'
 import { aniskip, mergeSkips } from '../src/aniskip'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, countdownAt, nextEpisode, nextStreamIndex, playTarget, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
+import { activeSkip, countdownAt, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, playTarget, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
 import { clearResume, getResume, setResume } from '../src/player/resume'
 
@@ -27,7 +27,7 @@ describe('player logic', () => {
   it('starts the next episode countdown at the outro unless a scene follows it', () => {
     const ed = (end: number) => [{ kind: 'op' as const, start: 0, end: 90 }, { kind: 'ed' as const, start: 1370, end }]
     expect(countdownAt(ed(1460), 1470)).toBe(1370)
-    expect(countdownAt(ed(1400), 1470)).toBe(1400)
+    expect(countdownAt(ed(1400), 1470)).toBeNull()
     expect(countdownAt([{ kind: 'op', start: 0, end: 90 }], 1470)).toBeNull()
     expect(countdownAt(ed(1460), Number.NaN)).toBeNull()
   })
@@ -132,6 +132,17 @@ describe('sections', () => {
     ])
     expect(sections(undefined, 100)).toEqual([{ kind: 'main', start: 0, end: 100 }])
     expect(sections(ranges, 0)).toEqual([])
+  })
+
+  it('offers only real quality steps, not mirror servers', () => {
+    expect(qualityChoices([{}, {}, {}])).toEqual([])
+    expect(qualityChoices([{ quality: '720p' }, { quality: '1080p' }, { quality: '1080p' }, {}])).toEqual([{ label: '1080p', index: 1 }, { label: '720p', index: 0 }])
+  })
+
+  it('treats the last 20 seconds as the end', () => {
+    expect(nearEnd(1455, 1470)).toBe(true)
+    expect(nearEnd(1400, 1470)).toBe(false)
+    expect(nearEnd(10, Number.NaN)).toBe(false)
   })
 
   it('names quality in plain words', () => {

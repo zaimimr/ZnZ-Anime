@@ -9,10 +9,27 @@ export function activeSkip(ranges: SkipRange[] | undefined, position: number): S
   return ranges?.find((r) => position >= r.start && position < r.end) ?? null
 }
 
+export function hasSceneAfterOutro(ed: SkipRange, duration: number): boolean {
+  return duration - ed.end > 15
+}
+
 export function countdownAt(ranges: SkipRange[] | undefined, duration: number): number | null {
   const ed = ranges?.find((r) => r.kind === 'ed')
   if (!ed || !(duration > 0)) return null
-  return duration - ed.end > 15 ? ed.end : ed.start
+  return hasSceneAfterOutro(ed, duration) ? null : ed.start
+}
+
+export function nearEnd(position: number, duration: number): boolean {
+  return duration > 0 && duration - position < 20
+}
+
+export function qualityChoices(streams: { quality?: string }[]): { label: string; index: number }[] {
+  const seen = new Map<number, number>()
+  streams.forEach((s, i) => {
+    const p = Number(s.quality?.match(/\d+/)?.[0] ?? 0)
+    if (p && !seen.has(p)) seen.set(p, i)
+  })
+  return [...seen].sort((a, b) => b[0] - a[0]).map(([p, index]) => ({ label: `${p}p`, index }))
 }
 
 export function playTarget(watched: number, available: number | undefined, total: number | undefined): number {

@@ -10,6 +10,13 @@ import { readQueue } from '../sync/queue'
 import type { Provider } from '../types'
 import { Focusable } from '../ui/Focusable'
 
+const toggles = [
+  ['autoSkipIntro', 'Skip intros', 'Jump past the opening song'],
+  ['autoSkipOutro', 'Skip outros', 'Jump past the ending song, or go to the next episode'],
+  ['autoplayNext', 'Play next episode', 'Start the next episode after a short countdown'],
+  ['skipFiller', 'Skip filler episodes', 'Leave out episodes that are not in the manga'],
+] as const
+
 type MergeState = { step: 'idle' } | { step: 'checking' } | { step: 'preview'; plan: MergePlan } | { step: 'running'; done: number; total: number } | { step: 'done' } | { step: 'error'; message: string }
 
 export function SettingsScreen() {
@@ -81,9 +88,21 @@ export function SettingsScreen() {
       {pending > 0 && <p className="muted">{pending} {pending === 1 ? 'update' : 'updates'} waiting to retry.</p>}
 
       <h2>Playback</h2>
-      <Focusable className="btn" autoFocus onEnter={() => update({ ...settings, lang: settings.lang === 'sub' ? 'dub' : 'sub' })}>
-        Default language: {settings.lang.toUpperCase()}
-      </Focusable>
+      <div className="setting-list">
+        <Focusable className="setting" autoFocus onEnter={() => update({ ...settings, lang: settings.lang === 'sub' ? 'dub' : 'sub' })}>
+          <span>Audio</span>
+          <span className="muted">{settings.lang === 'sub' ? 'Japanese with subtitles' : 'English dub'}</span>
+        </Focusable>
+        {toggles.map(([key, label, detail]) => (
+          <Focusable key={key} className="setting" onEnter={() => update({ ...settings, [key]: !settings[key] })}>
+            <span>
+              {label}
+              <span className="setting-detail">{detail}</span>
+            </span>
+            <span className={`switch ${settings[key] ? 'on' : ''}`}><span /></span>
+          </Focusable>
+        ))}
+      </div>
 
       <h2>Sources</h2>
       {orderedAdapters().map((adapter, i) => (

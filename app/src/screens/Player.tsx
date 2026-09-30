@@ -5,7 +5,7 @@ import { AuthError } from '../http'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
-import { activeSkip, countdownAt, nextEpisode, nextStreamIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
+import { activeSkip, countdownAt, hasSceneAfterOutro, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
 import { playableUrl } from '../player/proxy'
 import { loadThumbs, thumbAt, type ThumbCue } from '../player/thumbnails'
 import { clearResume, getResume, setResume } from '../player/resume'
@@ -82,7 +82,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [countdownFrom, setCountdownFrom] = useState(5)
   const [fallbackSkip, setFallbackSkip] = useState<SkipRange[]>([])
-  const [undoIntro, setUndoIntro] = useState<SkipRange | null>(null)
+  const [undoSkip, setUndoSkip] = useState<SkipRange | null>(null)
+  const [finished, setFinished] = useState(false)
   const [panel, setPanel] = useState<{ row: number; list: number | null } | null>(null)
   const [scrub, setScrub] = useState<Scrub | null>(null)
   const [thumbs, setThumbs] = useState<ThumbCue[]>([])
@@ -99,7 +100,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [prefs, setPrefs] = useState<Settings>(getSettings())
   const [subChoice, setSubChoice] = useState<string | null>(null)
   const marked = useRef(false)
-  const intro = useRef<'pending' | 'skipped' | 'watching'>('pending')
+  const skipped = useRef<Record<'op' | 'ed', 'pending' | 'skipped' | 'watching'>>({ op: 'pending', ed: 'pending' })
   const countdownFired = useRef(false)
   const startAt = useRef(getResume(id, ep))
   const triedAdapters = useRef<string[]>([])
@@ -128,6 +129,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const nextStream = useCallback((skipProvider = false) => {
     if (!loaded) return
+    const el = video.current
+    if (countdownFired.current || (el && nearEnd(el.currentTime, el.duration))) return setFinished(true)
     startAt.current = video.current?.currentTime || startAt.current
     const next = nextStreamIndex(loaded.streams, index, skipProvider)
     if (next >= 0) setIndex(next)
@@ -220,10 +223,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const bar = useMemo(() => sections(ranges, time.total), [ranges, time.total])
 
   useEffect(() => {
-    if (!undoIntro) return
-    const timer = setTimeout(() => setUndoIntro(null), 5000)
+    if (!undoSkip) return
+    const timer = setTimeout(() => setUndoSkip(null), 5000)
     return () => clearTimeout(timer)
-  }, [undoIntro])
+  }, [undoSkip])
 
   const updatePrefs = useCallback((change: Partial<Settings>) => {
     const updated = { ...getSettings(), ...change }
@@ -257,11 +260,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!loaded || !stream) return []
     const names = providers(loaded.streams)
     const sameProvider = loaded.streams.map((s, i) => ({ s, i })).filter(({ s }) => s.provider === stream.provider)
-    const qualities = sameProvider.map(({ s }, n) => {
-      const q = qualityLabel(s.quality)
-      const backups = sameProvider.slice(0, n).filter((o) => qualityLabel(o.s.quality).label === q.label).length
-      return { label: backups ? `${q.label}, backup ${backups}` : q.label, detail: q.detail }
-    })
+    const qualities = qualityChoices(sameProvider.map((o) => o.s)).map((q) => ({ ...q, detail: qualityLabel(q.label).detail, stream: sameProvider[q.index].i }))
     const audio = [
       { label: 'Japanese', detail: 'With English subtitles' },
       { label: 'English', detail: 'Dubbed' },
@@ -270,17 +269,18 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       const best = Math.max(0, ...loaded.streams.filter((s) => s.provider === name).map((s) => Number(s.quality?.match(/\d+/)?.[0] ?? 0)))
       return best ? `Up to ${best}p` : 'Adjusts to your connection'
     }
-    const qualityCurrent = sameProvider.findIndex((o) => o.i === index)
+    const qualityCurrent = qualities.findIndex((q) => q.label === qualityLabel(stream.quality).label)
     const result: Row[] = []
     if (otherLang) result.push({ label: 'Audio', value: audio[loaded.lang === 'sub' ? 0 : 1].label, options: audio, current: loaded.lang === 'sub' ? 0 : 1, pick: (i) => void switchLang(i === 0 ? 'sub' : 'dub') })
     if (names.length > 1) result.push({ label: 'Server', value: capitalize(stream.provider), options: names.map((n) => ({ label: capitalize(n), detail: serverDetail(n) })), current: names.indexOf(stream.provider), pick: (i) => switchStream(loaded.streams.findIndex((s) => s.provider === names[i])) })
-    if (sameProvider.length > 1) result.push({ label: 'Quality', value: qualities[qualityCurrent]?.label ?? 'Automatic', options: qualities, current: qualityCurrent, pick: (i) => switchStream(sameProvider[i].i) })
+    if (qualities.length > 1) result.push({ label: 'Quality', value: qualities[qualityCurrent]?.label ?? 'Automatic', options: qualities, current: qualityCurrent, pick: (i) => switchStream(qualities[i].stream) })
     if (subs.length) result.push({ label: 'Subtitles', value: chosenSub?.label ?? 'Off', options: [{ label: 'Off' }, ...subs.map((s) => ({ label: s.label }))], current: chosenSub ? subs.indexOf(chosenSub) + 1 : 0, pick: (i) => setSubChoice(i === 0 ? 'off' : subs[i - 1].label) })
-    if (ranges?.some((r) => r.kind === 'op')) result.push({ label: 'Skip intros', value: '', on: prefs.autoSkipIntro, toggle: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) })
+    result.push({ label: 'Skip intros', value: '', on: prefs.autoSkipIntro, toggle: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) })
+    result.push({ label: 'Skip outros', value: '', on: prefs.autoSkipOutro, toggle: () => updatePrefs({ autoSkipOutro: !prefs.autoSkipOutro }) })
     if (loaded.episodes.some((e) => e.filler)) result.push({ label: 'Skip filler episodes', value: '', on: prefs.skipFiller, toggle: () => updatePrefs({ skipFiller: !prefs.skipFiller }) })
-    if (next) result.push({ label: 'Play next episode', value: '', on: prefs.autoplayNext, toggle: () => updatePrefs({ autoplayNext: !prefs.autoplayNext }) })
+    result.push({ label: 'Play next episode', value: '', on: prefs.autoplayNext, toggle: () => updatePrefs({ autoplayNext: !prefs.autoplayNext }) })
     return result
-  }, [loaded, stream, index, subs, chosenSub, prefs, otherLang, ranges, next, switchLang, switchStream, updatePrefs])
+  }, [loaded, stream, subs, chosenSub, prefs, otherLang, switchLang, switchStream, updatePrefs])
 
   useEffect(() => {
     if (!loaded) return
@@ -361,16 +361,16 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         setCountdown(null)
         return true
       }
-      if (undoIntro && video.current) {
-        video.current.currentTime = undoIntro.start
-        intro.current = 'watching'
-        setUndoIntro(null)
+      if (undoSkip && video.current) {
+        video.current.currentTime = undoSkip.start
+        skipped.current[undoSkip.kind] = 'watching'
+        setUndoSkip(null)
         return true
       }
       return false
     })
     return () => setBackHandler(null)
-  }, [panel, countdown, undoIntro, endScrub, setBackHandler])
+  }, [panel, countdown, undoSkip, endScrub, setBackHandler])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -426,13 +426,14 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!el || !loaded || scrubRef.current) return
     setTime({ now: el.currentTime, total: el.duration || 0, buffered: bufferedEnd(el) })
     if (shouldMarkWatched(el.currentTime, el.duration)) markWatched()
-    const op = activeSkip(ranges, el.currentTime)
-    if (op?.kind === 'op' && intro.current === 'pending' && prefs.autoSkipIntro) {
-      intro.current = 'skipped'
-      el.currentTime = op.end
-      setUndoIntro(op)
+    const range = activeSkip(ranges, el.currentTime)
+    const wanted = range && (range.kind === 'op' ? prefs.autoSkipIntro : prefs.autoSkipOutro && hasSceneAfterOutro(range, el.duration))
+    if (range && wanted && skipped.current[range.kind] === 'pending') {
+      skipped.current[range.kind] = 'skipped'
+      el.currentTime = range.end
+      setUndoSkip(range)
     }
-    const at = countdownAt(ranges, el.duration)
+    const at = prefs.autoSkipOutro ? countdownAt(ranges, el.duration) : null
     if (next && prefs.autoplayNext && at !== null && el.currentTime >= at && !countdownFired.current) {
       countdownFired.current = true
       setCountdownFrom(5)
@@ -448,13 +449,19 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     }
   }
 
-  const onEnded = () => {
+  const onEnded = () => setFinished(true)
+
+  useEffect(() => {
+    if (!finished) return
     clearResume(id, ep)
-    if (next && prefs.autoplayNext) {
+    video.current?.pause()
+    markWatched()
+    if (next && prefs.autoplayNext && countdown === null) {
+      countdownFired.current = true
       setCountdownFrom(10)
       setCountdown(10)
     }
-  }
+  }, [finished])
 
   if (error) {
     return (
@@ -565,8 +572,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         </div>
       )}
 
-      {undoIntro && showPrompt && <div className="prompt quiet">Intro skipped <span className="hint"><kbd><Icon name="back" size={20} /></kbd> Watch it</span></div>}
-      {skip && !undoIntro && showPrompt && <div className="prompt"><kbd>OK</kbd> Skip {skip.kind === 'op' ? 'intro' : 'outro'}</div>}
+      {undoSkip && showPrompt && <div className="prompt quiet">{undoSkip.kind === 'op' ? 'Intro' : 'Outro'} skipped <span className="hint"><kbd><Icon name="back" size={20} /></kbd> Watch it</span></div>}
+      {skip && !undoSkip && showPrompt && <div className="prompt"><kbd>OK</kbd> Skip {skip.kind === 'op' ? 'intro' : 'outro'}</div>}
       {countdown !== null && next && (
         <div className="up-next">
           {next.thumbnail && <img src={next.thumbnail} alt="" />}

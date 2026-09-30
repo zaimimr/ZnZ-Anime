@@ -49,6 +49,16 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .tab .count { margin-left: 6px; opacity: 0.6; font-variant-numeric: tabular-nums; }
 .grid { display: flex; flex-wrap: wrap; gap: 28px 24px; padding: 12px 8px; }
 .poster .fresh { color: #f5b83d; font-weight: 600; }
+.setting-list { display: flex; flex-direction: column; gap: 8px; max-width: 1000px; margin-bottom: 24px; }
+.setting { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 18px 28px; border-radius: 12px; background: var(--panel); cursor: pointer; }
+.setting.focused { transform: none; background: var(--text); color: var(--bg); }
+.setting.focused .muted, .setting.focused .setting-detail { color: rgba(10, 12, 16, 0.64); }
+.setting-detail { display: block; margin-top: 4px; font-size: 22px; color: var(--muted); }
+.switch { position: relative; width: 60px; height: 34px; border-radius: 17px; background: rgba(255, 255, 255, 0.24); transition: background 180ms; flex: none; }
+.switch > span { position: absolute; top: 4px; left: 4px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.switch.on { background: var(--accent); }
+.switch.on > span { transform: translateX(26px); }
+.setting.focused .switch:not(.on) { background: rgba(10, 12, 16, 0.22); }
 .center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px; }
 .player { position: fixed; inset: 0; background: #000; --gold: #f5b83d; --ink: #0a0c10; }
 .player video { width: 100%; height: 100%; }
@@ -114,10 +124,6 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .player .panel-row.focused .value { color: rgba(10, 12, 16, 0.7); }
 .player .panel-row.fixed .value { color: rgba(255, 255, 255, 0.42); }
 .player .panel-row.focused.fixed .value { color: rgba(10, 12, 16, 0.5); }
-.player .switch { position: relative; width: 60px; height: 34px; border-radius: 17px; background: rgba(255, 255, 255, 0.24); transition: background 180ms; flex: none; }
-.player .switch > span { position: absolute; top: 4px; left: 4px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
-.player .switch.on { background: var(--accent); }
-.player .switch.on > span { transform: translateX(26px); }
 .player .panel-row.focused .switch:not(.on) { background: rgba(10, 12, 16, 0.22); }
 .player .options { padding: 8px; border-radius: 0 0 12px 12px; background: rgba(255, 255, 255, 0.06); }
 .player .option { display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 10px; }
