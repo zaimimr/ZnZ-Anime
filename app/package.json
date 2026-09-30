@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "check:sources": "vitest run --config vitest.check.config.ts",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "package:tv": "pnpm build && ${TIZEN:-$HOME/tizen-studio/tools/ide/bin/tizen} package -t wgt -s ${TIZEN_PROFILE:-TVMate} -- dist && mv dist/*.wgt dist/ZnZAnime.wgt"
   },
   "dependencies": {
     "@noriginmedia/norigin-spatial-navigation": "^3.3.0",

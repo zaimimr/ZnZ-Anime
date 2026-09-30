@@ -2,5 +2,5 @@
   "name": "znz-auth",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
-  "kv_namespaces": [{ "binding": "PAIRS", "id": "REPLACE_IN_TASK_18" }]
+  "kv_namespaces": [{ "binding": "PAIRS", "id": "8c555bb5115c4c5a8a13642a8883dc3d" }]
 }

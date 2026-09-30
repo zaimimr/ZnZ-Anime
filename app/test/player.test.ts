@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, shouldMarkWatched, statusAfter } from '../src/player/logic'
+import { activeSkip, nextStreamIndex, shouldMarkWatched, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
 import { clearResume, getResume, setResume } from '../src/player/resume'
 
@@ -26,6 +26,23 @@ describe('player logic', () => {
     expect(statusAfter(12, 12)).toBe('completed')
     expect(statusAfter(11, 12)).toBe('watching')
     expect(statusAfter(5, undefined)).toBe('watching')
+  })
+})
+
+describe('nextStreamIndex', () => {
+  const streams = ['pahe', 'pahe', 'pahe', 'waves', 'kaa'].map((provider) => ({ provider, url: '', format: 'hls' as const, subtitles: [] }))
+
+  it('moves to the next stream', () => {
+    expect(nextStreamIndex(streams, 0)).toBe(1)
+  })
+
+  it('skips the rest of a blocked provider', () => {
+    expect(nextStreamIndex(streams, 0, true)).toBe(3)
+  })
+
+  it('returns -1 when nothing is left', () => {
+    expect(nextStreamIndex(streams, 4)).toBe(-1)
+    expect(nextStreamIndex(streams.slice(0, 3), 0, true)).toBe(-1)
   })
 })
 

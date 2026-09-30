@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
-import { activeSkip, shouldMarkWatched, statusAfter } from '../player/logic'
+import { activeSkip, nextStreamIndex, shouldMarkWatched, statusAfter } from '../player/logic'
 import { playableUrl } from '../player/proxy'
 import { clearResume, getResume, setResume } from '../player/resume'
 import { getSettings } from '../settings'
@@ -56,11 +56,12 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     load([]).catch(() => setError('Could not load this episode.'))
   }, [load])
 
-  const nextStream = useCallback(() => {
+  const nextStream = useCallback((skipProvider = false) => {
     if (!loaded) return
     startAt.current = video.current?.currentTime || startAt.current
     recoveries.current = 0
-    if (index + 1 < loaded.streams.length) setIndex(index + 1)
+    const next = nextStreamIndex(loaded.streams, index, skipProvider)
+    if (next >= 0) setIndex(next)
     else load(triedAdapters.current).catch(() => setError('No source available.'))
   }, [loaded, index, load])
 
@@ -79,7 +80,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
           recoveries.current++
           instance.recoverMediaError()
         } else {
-          nextStream()
+          const blocked = data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR || data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR
+          nextStream(blocked)
         }
       })
       instance.loadSource(url)
@@ -214,7 +216,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       {overlay && loaded && (
         <div className="overlay">
           <div>{loaded.info.title} · Episode {ep}</div>
-          <div className="muted">{format(time.now)} / {format(time.total)} · {stream?.provider} {stream?.quality ?? ''} · {loaded.lang.toUpperCase()}</div>
+          <div className="muted">{format(time.now)} / {format(time.total)} · {[stream?.provider, stream?.quality].filter(Boolean).join(' ')} · {loaded.lang.toUpperCase()}</div>
           <div className="bar"><div style={{ width: `${time.total ? (time.now / time.total) * 100 : 0}%` }} /></div>
         </div>
       )}
