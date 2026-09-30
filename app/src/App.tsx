@@ -4,6 +4,7 @@ import { AuthError } from './http'
 import { RouterProvider, useRouter } from './nav/router'
 import { Home } from './screens/Home'
 import { Pair } from './screens/Pair'
+import { Search } from './screens/Search'
 import { flushQueue } from './sync/writer'
 
 function Screens() {
@@ -22,6 +23,8 @@ function Screens() {
       return <Pair key={route.provider} provider={route.provider} next={route.next} />
     case 'home':
       return <Home />
+    case 'search':
+      return <Search />
     default:
       return <div className="screen center">Coming next: {route.name}</div>
   }
