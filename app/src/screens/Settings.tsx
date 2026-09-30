@@ -97,12 +97,12 @@ export function SettingsScreen() {
         <>
           <h2>Merge AniList and MAL</h2>
           {merge.step === 'idle' && <p className="muted">Your lists have not been merged yet.</p>}
-          {(merge.step === 'idle' || merge.step === 'done' || merge.step === 'error') && <Focusable className="btn" onEnter={check}>Check lists</Focusable>}
+          {(merge.step === 'idle' || merge.step === 'done' || merge.step === 'error') && <Focusable className="btn" autoFocus={merge.step !== 'idle'} onEnter={check}>Check lists</Focusable>}
           {merge.step === 'checking' && <p>Reading both lists...</p>}
           {merge.step === 'preview' && (
             <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
               <p>{merge.plan.toAnilist.length} changes on AniList, {merge.plan.toMal.length} on MAL, {merge.plan.unmatched.length} unmatched.</p>
-              <Focusable className="btn active" onEnter={() => run(merge.plan)}>Merge now</Focusable>
+              <Focusable className="btn active" autoFocus onEnter={() => run(merge.plan)}>Merge now</Focusable>
             </div>
           )}
           {merge.step === 'running' && <p>Merging {merge.done} / {merge.total}</p>}
