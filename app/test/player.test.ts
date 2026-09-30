@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { aniskip, mergeSkips } from '../src/aniskip'
 import { b64urlDecode } from '../src/b64'
 import { activeSkip, countdownAt, nextStreamIndex, playTarget, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
@@ -90,5 +91,24 @@ describe('playableUrl', () => {
 
   it('returns the raw URL without headers', () => {
     expect(playableUrl('https://cdn/a.m3u8')).toBe('https://cdn/a.m3u8')
+  })
+})
+
+describe('aniskip', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads op and ed times', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ results: [{ skipType: 'op', interval: { startTime: 1.5, endTime: 91.5 } }, { skipType: 'recap', interval: { startTime: 0, endTime: 1 } }] }))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await aniskip(52991, 4)).toEqual([{ kind: 'op', start: 1.5, end: 91.5 }])
+    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('https://api.aniskip.com/v2/skip-times/52991/4?types=op&types=ed&episodeLength=0')
+  })
+
+  it('fills only the kinds the source is missing', () => {
+    const op = { kind: 'op' as const, start: 1, end: 91 }
+    const ed = { kind: 'ed' as const, start: 1370, end: 1460 }
+    expect(mergeSkips([op], [{ ...op, start: 5 }, ed])).toEqual([op, ed])
+    expect(mergeSkips(undefined, [ed])).toEqual([ed])
+    expect(mergeSkips(undefined, [])).toBeUndefined()
   })
 })

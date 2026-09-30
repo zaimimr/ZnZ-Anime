@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
+import { aniskip, mergeSkips } from '../aniskip'
 import { AuthError } from '../http'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
@@ -35,6 +36,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [overlay, setOverlay] = useState(true)
   const [time, setTime] = useState({ now: 0, total: 0 })
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [fallbackSkip, setFallbackSkip] = useState<SkipRange[]>([])
   const [undoIntro, setUndoIntro] = useState<SkipRange | null>(null)
   const marked = useRef(false)
   const intro = useRef<'pending' | 'skipped' | 'watching'>('pending')
@@ -58,6 +60,11 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   useEffect(() => {
     load([]).catch(() => setError('Could not load this episode.'))
   }, [load])
+
+  const malId = loaded?.info.idMal
+  useEffect(() => {
+    if (malId) aniskip(malId, ep).then(setFallbackSkip).catch(() => undefined)
+  }, [malId, ep])
 
   const nextStream = useCallback((skipProvider = false) => {
     if (!loaded) return
@@ -125,7 +132,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     return () => clearTimeout(timer)
   }, [countdown, playNext])
 
-  const ranges = loaded?.streams[index]?.skip ?? loaded?.skip
+  const ranges = useMemo(() => mergeSkips(loaded?.streams[index]?.skip ?? loaded?.skip, fallbackSkip), [loaded, index, fallbackSkip])
   const skip = activeSkip(ranges, time.now)
 
   useEffect(() => {
