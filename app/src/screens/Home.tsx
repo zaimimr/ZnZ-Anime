@@ -60,7 +60,7 @@ export function Home() {
     <div className="screen" style={{ overflowY: 'auto' }}>
       {offline && <p className="muted">Offline or a service is down. Showing what is cached.</p>}
       <header style={{ display: 'flex', gap: 24, marginBottom: 32, alignItems: 'center' }}>
-        <h1 style={{ margin: 0, marginRight: 'auto' }}>ZnZ Anime</h1>
+        <h1 className="brand"><img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />ZnZ<span>Anime</span></h1>
         <Focusable className="btn" autoFocus onEnter={() => push({ name: 'list' })}>My list</Focusable>
         <Focusable className="btn" onEnter={() => push({ name: 'schedule' })}>This week</Focusable>
         <Focusable className="btn" onEnter={() => push({ name: 'search' })}>Search</Focusable>

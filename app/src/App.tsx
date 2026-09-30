@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { getToken } from './auth/tokens'
 import { AuthError } from './http'
 import { RouterProvider, useRouter } from './nav/router'
@@ -43,14 +43,27 @@ function Screens() {
   }
 }
 
+function Splash() {
+  return (
+    <div className="splash">
+      <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />
+      <div className="brand">ZnZ<span>Anime</span></div>
+    </div>
+  )
+}
+
 export default function App() {
+  const [splash, setSplash] = useState(true)
   useEffect(() => {
     void flushQueue()
+    const timer = setTimeout(() => setSplash(false), 2000)
+    return () => clearTimeout(timer)
   }, [])
   const initial = getToken('anilist') ? ({ name: 'home' } as const) : ({ name: 'pair', provider: 'anilist', next: 'home' } as const)
   return (
     <RouterProvider initial={initial}>
       <Screens />
+      {splash && <Splash />}
     </RouterProvider>
   )
 }

@@ -3,7 +3,7 @@
   --panel: #151922;
   --text: #f2f4f8;
   --muted: #8a93a6;
-  --accent: #ff4d6d;
+  --accent: #ff4f86;
   --focus: #ffffff;
 }
 * { box-sizing: border-box; }
@@ -59,6 +59,15 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .switch.on { background: var(--accent); }
 .switch.on > span { transform: translateX(26px); }
 .setting.focused .switch:not(.on) { background: rgba(10, 12, 16, 0.22); }
+.brand { display: flex; align-items: center; gap: 16px; margin: 0 auto 0 0; font-size: 48px; font-weight: 800; letter-spacing: -0.02em; }
+.brand img { width: 72px; height: 72px; margin-right: 4px; }
+.brand span { font-weight: 400; color: #ffb3c9; }
+.splash { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px; background: radial-gradient(circle at 50% 42%, #2c3577, #0f1330 70%); animation: splash-out 400ms ease-in 1500ms forwards; }
+.splash img { width: 300px; height: 300px; animation: bloom 900ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash .brand { margin: 0; font-size: 72px; animation: rise 600ms cubic-bezier(0.16, 1, 0.3, 1) 400ms both; }
+@keyframes bloom { from { transform: scale(0.2) rotate(-120deg); opacity: 0; } }
+@keyframes rise { from { transform: translateY(24px); opacity: 0; } }
+@keyframes splash-out { to { opacity: 0; visibility: hidden; } }
 .center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px; }
 .player { position: fixed; inset: 0; background: #000; --gold: #f5b83d; --ink: #0a0c10; }
 .player video { width: 100%; height: 100%; }

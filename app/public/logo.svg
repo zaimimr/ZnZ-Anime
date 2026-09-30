@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-256 -256 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="petal" cx="0" cy="0" r="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff4f86"/>
+      <stop offset=".35" stop-color="#ff8db0"/>
+      <stop offset="1" stop-color="#ffe1ea"/>
+    </radialGradient>
+    <radialGradient id="heart" cx="-.2" cy="-.3" r="1">
+      <stop offset="0" stop-color="#ff6f9c"/>
+      <stop offset="1" stop-color="#e62e6b"/>
+    </radialGradient>
+    <path id="p" d="M0 -22 C -46 -60 -80 -126 -60 -174 C -47 -202 -22 -204 -9 -190 L 0 -171 L 9 -190 C 22 -204 47 -202 60 -174 C 80 -126 46 -60 0 -22 Z"/>
+    <path id="v" d="M0 -40 L0 -150" />
+  </defs>
+  <g transform="rotate(-12)">
+    <g fill="url(#petal)" stroke="#e8467c" stroke-width="3.5" stroke-linejoin="round">
+      <use href="#p"/>
+      <use href="#p" transform="rotate(72)"/>
+      <use href="#p" transform="rotate(144)"/>
+      <use href="#p" transform="rotate(216)"/>
+      <use href="#p" transform="rotate(288)"/>
+    </g>
+    <g stroke="#ffffff" stroke-opacity=".55" stroke-width="4" stroke-linecap="round" fill="none">
+      <use href="#v"/>
+      <use href="#v" transform="rotate(72)"/>
+      <use href="#v" transform="rotate(144)"/>
+      <use href="#v" transform="rotate(216)"/>
+      <use href="#v" transform="rotate(288)"/>
+    </g>
+    <g fill="#ffd166">
+      <circle cx="0" cy="-70" r="7"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(36)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(72)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(108)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(144)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(180)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(216)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(252)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(288)"/>
+      <circle cx="0" cy="-70" r="7" transform="rotate(324)"/>
+    </g>
+  </g>
+  <circle r="54" fill="url(#heart)"/>
+  <path d="M-16 -26 Q-18 -30 -14 -28 L26 -4 Q30 0 26 4 L-14 28 Q-18 30 -16 26 Z" fill="#ffffff" stroke="#ffffff" stroke-width="10" stroke-linejoin="round"/>
+</svg>
