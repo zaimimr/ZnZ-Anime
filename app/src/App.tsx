@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { getToken } from './auth/tokens'
 import { AuthError } from './http'
 import { RouterProvider, useRouter } from './nav/router'
+import { Home } from './screens/Home'
 import { Pair } from './screens/Pair'
 import { flushQueue } from './sync/writer'
 
@@ -19,6 +20,8 @@ function Screens() {
   switch (route.name) {
     case 'pair':
       return <Pair key={route.provider} provider={route.provider} next={route.next} />
+    case 'home':
+      return <Home />
     default:
       return <div className="screen center">Coming next: {route.name}</div>
   }

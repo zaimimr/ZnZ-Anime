@@ -2,9 +2,11 @@ import type { Provider } from './types'
 
 export class HttpError extends Error {
   status: number
-  constructor(status: number, url: string) {
+  body: string
+  constructor(status: number, url: string, body = '') {
     super(`HTTP ${status} for ${url}`)
     this.status = status
+    this.body = body
   }
 }
 
@@ -29,6 +31,6 @@ export async function request(url: string, init?: RequestInit, opts: { provider?
       continue
     }
     if (res.status === 401 && opts.provider) throw new AuthError(opts.provider)
-    throw new HttpError(res.status, url)
+    throw new HttpError(res.status, url, await res.text().catch(() => ''))
   }
 }

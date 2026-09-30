@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { anilistIdsForMal, fetchList, fromStatus, mediaByIds, saveEntry, toStatus, trendingWithHistory } from '../src/anilist/api'
-import { setToken } from '../src/auth/tokens'
+import { getToken, setToken } from '../src/auth/tokens'
+import { AuthError } from '../src/http'
 
 function gqlReply(data: unknown) {
   return vi.fn(async () => Response.json({ data }))
@@ -67,6 +68,18 @@ describe('anilist api', () => {
     expect(result.hasNext).toBe(true)
     expect(result.items[0].card.id).toBe(1)
     expect(result.items[0].history).toEqual([{ date: 100, trending: 50 }, { date: 50, trending: 20 }])
+  })
+
+  it('treats an invalid AniList token as a login problem and clears it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: null, errors: [{ message: 'Invalid token', status: 400 }] }, { status: 400 })))
+    await expect(mediaByIds([1])).rejects.toBeInstanceOf(AuthError)
+    expect(getToken('anilist')).toBeNull()
+  })
+
+  it('keeps the token on other 400 errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: null, errors: [{ message: 'Cannot query field', status: 400 }] }, { status: 400 })))
+    await expect(mediaByIds([1])).rejects.not.toBeInstanceOf(AuthError)
+    expect(getToken('anilist')).not.toBeNull()
   })
 
   it('surfaces GraphQL errors', async () => {
