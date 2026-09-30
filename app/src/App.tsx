@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { getToken } from './auth/tokens'
 import { AuthError } from './http'
 import { RouterProvider, useRouter } from './nav/router'
+import { DetailsScreen } from './screens/Details'
 import { Home } from './screens/Home'
 import { Pair } from './screens/Pair'
 import { Search } from './screens/Search'
@@ -25,6 +26,8 @@ function Screens() {
       return <Home />
     case 'search':
       return <Search />
+    case 'details':
+      return <DetailsScreen key={route.id} id={route.id} />
     default:
       return <div className="screen center">Coming next: {route.name}</div>
   }
