@@ -46,6 +46,10 @@ export async function malProgress(malId: number): Promise<number> {
   return body.my_list_status?.num_episodes_watched ?? 0
 }
 
+export async function deleteMalEntry(malId: number): Promise<void> {
+  await malRequest(`${hosts.mal}/v2/anime/${malId}/my_list_status`, { method: 'DELETE' })
+}
+
 export async function saveMalEntry(change: Change): Promise<void> {
   await malRequest(`${hosts.mal}/v2/anime/${change.malId}/my_list_status`, {
     method: 'PATCH',

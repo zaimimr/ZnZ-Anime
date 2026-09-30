@@ -4,8 +4,10 @@ import { AuthError } from './http'
 import { RouterProvider, useRouter } from './nav/router'
 import { DetailsScreen } from './screens/Details'
 import { Home } from './screens/Home'
+import { MyList } from './screens/MyList'
 import { Pair } from './screens/Pair'
 import { PlayerScreen } from './screens/Player'
+import { Schedule } from './screens/Schedule'
 import { Search } from './screens/Search'
 import { SettingsScreen } from './screens/Settings'
 import { flushQueue } from './sync/writer'
@@ -28,6 +30,10 @@ function Screens() {
       return <Home />
     case 'search':
       return <Search />
+    case 'list':
+      return <MyList />
+    case 'schedule':
+      return <Schedule />
     case 'details':
       return <DetailsScreen key={route.id} id={route.id} />
     case 'player':

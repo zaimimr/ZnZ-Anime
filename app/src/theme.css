@@ -26,11 +26,29 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .episode .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .episode .blank { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 56px; color: var(--muted); }
 .episode.watched img { opacity: 0.55; }
-.episode .check { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; }
+.episode .check { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; }
 .episode .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(0, 0, 0, 0.6); }
 .episode .progress > div { height: 100%; background: var(--accent); }
 .episode span { display: block; font-size: 22px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .episode span.muted { font-size: 20px; margin-top: 2px; }
+.btn.play, .btn.with-icon { display: inline-flex; align-items: center; gap: 12px; }
+.menu-anchor { position: relative; }
+.menu { position: absolute; top: calc(100% + 12px); left: 0; z-index: 10; min-width: 360px; padding: 10px; border-radius: 14px; background: #161a23; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6); }
+.menu .menu-item { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 10px; font-size: 26px; }
+.menu .menu-item.focused { transform: none; border-color: transparent; background: var(--text); color: var(--bg); }
+.menu .menu-item.current { font-weight: 700; }
+.menu .menu-item.danger { color: #ff8a9e; margin-top: 6px; }
+.menu .menu-item.danger.focused { background: #ff8a9e; color: var(--bg); }
+.menu .tick { width: 22px; display: inline-flex; color: var(--accent); }
+.menu .menu-item.focused .tick { color: var(--bg); }
+.notice { margin: 20px 0 0; font-size: 24px; color: var(--muted); }
+.episode .tag { position: absolute; left: 10px; top: 10px; padding: 4px 10px; border-radius: 6px; background: rgba(10, 12, 16, 0.82); color: #f5b83d; font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+.tabs { display: flex; gap: 16px; margin-bottom: 36px; }
+.tab { padding: 14px 28px; border-radius: 999px; background: var(--panel); font-size: 26px; cursor: pointer; }
+.tab.active { background: var(--text); color: var(--bg); font-weight: 700; }
+.tab .count { margin-left: 6px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.grid { display: flex; flex-wrap: wrap; gap: 28px 24px; padding: 12px 8px; }
+.poster .fresh { color: #f5b83d; font-weight: 600; }
 .center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px; }
 .player { position: fixed; inset: 0; background: #000; --gold: #f5b83d; --ink: #0a0c10; }
 .player video { width: 100%; height: 100%; }
@@ -55,8 +73,8 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .player .knob.active { width: 32px; height: 32px; margin: -16px 0 0 -16px; }
 .player .origin { position: absolute; top: -6px; bottom: -6px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: rgba(255, 255, 255, 0.6); }
 .player .preview { position: absolute; bottom: 44px; width: 336px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
-.player .preview canvas { width: 336px; height: 189px; border-radius: 10px; background: #111; border: 3px solid #fff; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6); }
-.player .preview.stale canvas { opacity: 0.45; }
+.player .frame { width: 336px; height: 189px; border-radius: 10px; overflow: hidden; background: #111; outline: 3px solid #fff; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6); }
+.player .frame > div { transform-origin: 0 0; background-repeat: no-repeat; }
 .player .preview-time { margin-top: 12px; font-size: 36px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .player .preview-meta { font-size: 22px; color: rgba(255, 255, 255, 0.72); font-variant-numeric: tabular-nums; }
 .player .meta { display: flex; justify-content: space-between; align-items: baseline; margin-top: 24px; font-size: 26px; }

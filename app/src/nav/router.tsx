@@ -5,6 +5,8 @@ import { keyAction } from './keys'
 export type Route =
   | { name: 'home' }
   | { name: 'search' }
+  | { name: 'list' }
+  | { name: 'schedule' }
   | { name: 'details'; id: number }
   | { name: 'player'; id: number; ep: number }
   | { name: 'settings' }

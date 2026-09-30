@@ -1,7 +1,7 @@
-import { saveEntry } from '../anilist/api'
+import { deleteEntry, saveEntry } from '../anilist/api'
 import { getToken } from '../auth/tokens'
 import { AuthError } from '../http'
-import { saveMalEntry } from '../mal/api'
+import { deleteMalEntry, saveMalEntry } from '../mal/api'
 import type { Change } from '../types'
 import { enqueue, readQueue, removeFromQueue, type Target } from './queue'
 
@@ -20,6 +20,11 @@ export async function saveEverywhere(change: Change): Promise<void> {
   const malAuth = change.malId && getToken('mal') ? await attempt('mal', change) : null
   const auth = anilistAuth ?? malAuth
   if (auth) throw auth
+}
+
+export async function removeEverywhere(listId: number | undefined, malId: number | undefined): Promise<void> {
+  if (listId) await deleteEntry(listId)
+  if (malId && getToken('mal')) await deleteMalEntry(malId).catch(() => undefined)
 }
 
 export async function flushQueue(): Promise<void> {

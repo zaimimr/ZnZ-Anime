@@ -5,8 +5,9 @@ import { AuthError } from '../http'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
-import { activeSkip, countdownAt, nextStreamIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
+import { activeSkip, countdownAt, nextEpisode, nextStreamIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
 import { playableUrl } from '../player/proxy'
+import { loadThumbs, thumbAt, type ThumbCue } from '../player/thumbnails'
 import { clearResume, getResume, setResume } from '../player/resume'
 import { getSettings, saveSettings, type Settings } from '../settings'
 import { resolveFirst, streamsWithFallback } from '../sources/registry'
@@ -84,14 +85,12 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [undoIntro, setUndoIntro] = useState<SkipRange | null>(null)
   const [panel, setPanel] = useState<{ row: number; list: number | null } | null>(null)
   const [scrub, setScrub] = useState<Scrub | null>(null)
-  const [drawnAt, setDrawnAt] = useState<number | null>(null)
-  const [thumbWorks, setThumbWorks] = useState(true)
-  const blackDraws = useRef(0)
+  const [thumbs, setThumbs] = useState<ThumbCue[]>([])
+  const [otherLang, setOtherLang] = useState(false)
   const scrubRef = useRef<Scrub | null>(null)
   const scrubTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const lastKeyAt = useRef(0)
   const holdCount = useRef(0)
-  const thumb = useRef<HTMLCanvasElement>(null)
   const panelRows = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -193,13 +192,14 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const next = useMemo(() => {
     if (!loaded) return null
-    if (ep < loaded.total) {
-      const upcoming = loaded.episodes.find((e) => e.number === ep + 1)
-      return { id, ep: ep + 1, label: `Episode ${ep + 1}${upcoming?.title ? ` · ${upcoming.title}` : ''}`, thumbnail: upcoming?.thumbnail }
+    const n = nextEpisode(loaded.episodes, ep, loaded.total, prefs.skipFiller)
+    if (n !== null) {
+      const upcoming = loaded.episodes.find((e) => e.number === n)
+      return { id, ep: n, label: `Episode ${n}${upcoming?.title ? ` · ${upcoming.title}` : ''}`, thumbnail: upcoming?.thumbnail }
     }
     const sequel = loaded.info.related.find((r) => r.relation === 'Sequel')
     return sequel ? { id: sequel.id, ep: 1, label: sequel.title, thumbnail: sequel.cover } : null
-  }, [loaded, id, ep])
+  }, [loaded, id, ep, prefs.skipFiller])
 
   const playNext = useCallback(() => {
     if (!next) return
@@ -270,39 +270,40 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       const best = Math.max(0, ...loaded.streams.filter((s) => s.provider === name).map((s) => Number(s.quality?.match(/\d+/)?.[0] ?? 0)))
       return best ? `Up to ${best}p` : 'Adjusts to your connection'
     }
-    const subCurrent = chosenSub ? subs.indexOf(chosenSub) + 1 : 0
-    return [
-      { label: 'Audio', value: audio[loaded.lang === 'sub' ? 0 : 1].label, options: audio, current: loaded.lang === 'sub' ? 0 : 1, pick: (i) => void switchLang(i === 0 ? 'sub' : 'dub') },
-      { label: 'Server', value: capitalize(stream.provider), options: names.map((n) => ({ label: capitalize(n), detail: serverDetail(n) })), current: names.indexOf(stream.provider), pick: (i) => switchStream(loaded.streams.findIndex((s) => s.provider === names[i])) },
-      { label: 'Quality', value: qualities[sameProvider.findIndex((o) => o.i === index)]?.label ?? 'Automatic', options: qualities, current: sameProvider.findIndex((o) => o.i === index), pick: (i) => switchStream(sameProvider[i].i) },
-      subs.length
-        ? { label: 'Subtitles', value: chosenSub?.label ?? 'Off', options: [{ label: 'Off' }, ...subs.map((s) => ({ label: s.label }))], current: subCurrent, pick: (i) => setSubChoice(i === 0 ? 'off' : subs[i - 1].label) }
-        : { label: 'Subtitles', value: loaded.lang === 'sub' ? 'Part of the video' : 'None' },
-      { label: 'Skip intros', value: '', on: prefs.autoSkipIntro, toggle: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) },
-      { label: 'Play next episode', value: '', on: prefs.autoplayNext, toggle: () => updatePrefs({ autoplayNext: !prefs.autoplayNext }) },
-    ]
-  }, [loaded, stream, index, subs, chosenSub, prefs, switchLang, switchStream, updatePrefs])
+    const qualityCurrent = sameProvider.findIndex((o) => o.i === index)
+    const result: Row[] = []
+    if (otherLang) result.push({ label: 'Audio', value: audio[loaded.lang === 'sub' ? 0 : 1].label, options: audio, current: loaded.lang === 'sub' ? 0 : 1, pick: (i) => void switchLang(i === 0 ? 'sub' : 'dub') })
+    if (names.length > 1) result.push({ label: 'Server', value: capitalize(stream.provider), options: names.map((n) => ({ label: capitalize(n), detail: serverDetail(n) })), current: names.indexOf(stream.provider), pick: (i) => switchStream(loaded.streams.findIndex((s) => s.provider === names[i])) })
+    if (sameProvider.length > 1) result.push({ label: 'Quality', value: qualities[qualityCurrent]?.label ?? 'Automatic', options: qualities, current: qualityCurrent, pick: (i) => switchStream(sameProvider[i].i) })
+    if (subs.length) result.push({ label: 'Subtitles', value: chosenSub?.label ?? 'Off', options: [{ label: 'Off' }, ...subs.map((s) => ({ label: s.label }))], current: chosenSub ? subs.indexOf(chosenSub) + 1 : 0, pick: (i) => setSubChoice(i === 0 ? 'off' : subs[i - 1].label) })
+    if (ranges?.some((r) => r.kind === 'op')) result.push({ label: 'Skip intros', value: '', on: prefs.autoSkipIntro, toggle: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) })
+    if (loaded.episodes.some((e) => e.filler)) result.push({ label: 'Skip filler episodes', value: '', on: prefs.skipFiller, toggle: () => updatePrefs({ skipFiller: !prefs.skipFiller }) })
+    if (next) result.push({ label: 'Play next episode', value: '', on: prefs.autoplayNext, toggle: () => updatePrefs({ autoplayNext: !prefs.autoplayNext }) })
+    return result
+  }, [loaded, stream, index, subs, chosenSub, prefs, otherLang, ranges, next, switchLang, switchStream, updatePrefs])
 
-  const drawThumb = useCallback(() => {
-    const el = video.current
-    const ctx = thumb.current?.getContext('2d')
-    if (!el || !ctx) return
-    try {
-      ctx.drawImage(el, 0, 0, ctx.canvas.width, ctx.canvas.height)
-      setDrawnAt(el.currentTime)
-    } catch {
-      return setThumbWorks(false)
-    }
-    try {
-      const pixels = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data
-      let lit = 0
-      for (let i = 0; i < pixels.length; i += 4096) lit += pixels[i] + pixels[i + 1] + pixels[i + 2]
-      blackDraws.current = lit === 0 ? blackDraws.current + 1 : 0
-      if (blackDraws.current >= 3) setThumbWorks(false)
-    } catch {
-      return
-    }
-  }, [])
+  useEffect(() => {
+    if (!loaded) return
+    const other: Lang = loaded.lang === 'sub' ? 'dub' : 'sub'
+    let live = true
+    setOtherLang(false)
+    loaded.adapter.stream(loaded.show, ep, other).then((s) => live && setOtherLang(s.length > 0)).catch(() => undefined)
+    return () => { live = false }
+  }, [loaded, ep])
+
+  const thumbSource = stream?.thumbnails ? stream : loaded?.streams.find((s) => s.thumbnails)
+  useEffect(() => {
+    if (!thumbSource?.thumbnails) return setThumbs([])
+    let live = true
+    loadThumbs(thumbSource.thumbnails, thumbSource.headers)
+      .then((cues) => {
+        if (!live) return
+        setThumbs(cues)
+        for (const url of new Set(cues.map((c) => c.url))) new Image().src = url
+      })
+      .catch(() => live && setThumbs([]))
+    return () => { live = false }
+  }, [thumbSource])
 
   const endScrub = useCallback((to: 'target' | 'origin') => {
     const el = video.current
@@ -311,7 +312,6 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!el || !s) return
     scrubRef.current = null
     setScrub(null)
-    setDrawnAt(null)
     el.currentTime = to === 'target' ? s.target : s.origin
     if (s.resume) void el.play().catch(() => undefined)
   }, [])
@@ -338,7 +338,6 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const el = video.current
     const s = scrubRef.current
     if (!el || !s) return
-    drawThumb()
     if (Math.abs(el.currentTime - s.target) > 0.5) el.currentTime = s.target
   }
 
@@ -411,7 +410,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       else if (action === 'play') void el.play()
       else if (action === 'pause') el.pause()
       else if (action === 'stop') back()
-      else if (e.key === 'ArrowDown') { if (loaded) setPanel({ row: 0, list: null }) }
+      else if (e.key === 'ArrowDown') { if (rows.length) setPanel({ row: 0, list: null }) }
       else if (e.key !== 'ArrowUp') return
       e.preventDefault()
       e.stopPropagation()
@@ -473,6 +472,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const position = scrub?.target ?? time.now
   const scrubSection = scrub ? bar.find((b) => scrub.target >= b.start && scrub.target < b.end) : undefined
   const delta = scrub ? scrub.target - scrub.origin : 0
+  const cue = scrub ? thumbAt(thumbs, scrub.target) : undefined
 
   return (
     <div className="player">
@@ -516,8 +516,12 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
           <div className="bottom">
             <div className="scrubber">
               {scrub && (
-                <div className={`preview ${drawnAt === null || Math.abs(drawnAt - scrub.target) > 2 ? 'stale' : ''}`} style={{ left: `clamp(180px, ${pct(scrub.target)}%, calc(100% - 180px))` }}>
-                  <canvas ref={thumb} width={320} height={180} hidden={!thumbWorks} />
+                <div className="preview" style={{ left: `clamp(180px, ${pct(scrub.target)}%, calc(100% - 180px))` }}>
+                  {cue && (
+                    <div className="frame">
+                      <div style={{ width: cue.w, height: cue.h, transform: `scale(${336 / cue.w}, ${189 / cue.h})`, backgroundImage: `url("${cue.url}")`, backgroundPosition: `-${cue.x}px -${cue.y}px` }} />
+                    </div>
+                  )}
                   <div className="preview-time">{format(scrub.target)}</div>
                   <div className="preview-meta">{[scrubSection && sectionLabels[scrubSection.kind], `${delta < 0 ? '−' : '+'}${format(Math.abs(delta))}`].filter(Boolean).join(' · ')}</div>
                 </div>

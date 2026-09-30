@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseThumbs, thumbAt } from '../src/player/thumbnails'
 import { aniskip, mergeSkips } from '../src/aniskip'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, countdownAt, nextStreamIndex, playTarget, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
+import { activeSkip, countdownAt, nextEpisode, nextStreamIndex, playTarget, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
 import { clearResume, getResume, setResume } from '../src/player/resume'
 
@@ -29,6 +30,13 @@ describe('player logic', () => {
     expect(countdownAt(ed(1400), 1470)).toBe(1400)
     expect(countdownAt([{ kind: 'op', start: 0, end: 90 }], 1470)).toBeNull()
     expect(countdownAt(ed(1460), Number.NaN)).toBeNull()
+  })
+
+  it('skips filler episodes only when asked', () => {
+    const eps = [{ number: 1 }, { number: 2, filler: 'filler' as const }, { number: 3, filler: 'mixed' as const }, { number: 4, filler: 'filler' as const }]
+    expect(nextEpisode(eps, 1, 4, false)).toBe(2)
+    expect(nextEpisode(eps, 1, 4, true)).toBe(3)
+    expect(nextEpisode(eps, 3, 4, true)).toBeNull()
   })
 
   it('picks the episode to play', () => {
@@ -136,5 +144,18 @@ describe('sections', () => {
     expect(scrubStep(0)).toBe(10)
     expect(scrubStep(8)).toBe(30)
     expect(scrubStep(30)).toBe(60)
+  })
+})
+
+describe('thumbnails', () => {
+  it('parses sprite cues with absolute image URLs', () => {
+    const vtt = 'WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nsprite-01.jpg#xywh=0,0,320,180\n\n00:00:05.000 --> 00:01:10.000\nsprite-01.jpg#xywh=320,0,320,180\n'
+    const cues = parseThumbs(vtt, 'https://cdn.test/a/preview.vtt')
+    expect(cues).toEqual([
+      { start: 0, end: 5, url: 'https://cdn.test/a/sprite-01.jpg', x: 0, y: 0, w: 320, h: 180 },
+      { start: 5, end: 70, url: 'https://cdn.test/a/sprite-01.jpg', x: 320, y: 0, w: 320, h: 180 },
+    ])
+    expect(thumbAt(cues, 6)?.x).toBe(320)
+    expect(thumbAt(cues, 999)?.x).toBe(320)
   })
 })

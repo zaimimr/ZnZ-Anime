@@ -10,7 +10,7 @@ import { HttpError } from '../src/http'
 import { RouterProvider } from '../src/nav/router'
 import { DetailsScreen } from '../src/screens/Details'
 
-const info = { id: 1, title: 'Frieren', titles: ['Frieren'], cover: '', description: '', status: 'FINISHED', progress: 0, score: 0, related: [] }
+const info = { id: 1, title: 'Frieren', titles: ['Frieren'], cover: '', description: '', status: 'FINISHED', progress: 0, score: 0, related: [], recommended: [] }
 
 init()
 

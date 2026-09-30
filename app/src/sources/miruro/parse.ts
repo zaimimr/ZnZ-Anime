@@ -35,6 +35,7 @@ export function parseEpisodes(data: unknown): Episode[] {
       ...(e.thumbnail_url ? { thumbnail: String(e.thumbnail_url).replace('/t/p/original/', '/t/p/w300/') } : {}),
       ...(typeof e.duration_seconds === 'number' ? { duration: e.duration_seconds } : {}),
       ...(skip ? { skip } : {}),
+      ...(e.canon_type === 'filler' || e.canon_type === 'mixed' ? { filler: e.canon_type } : {}),
     }
   })
 }
@@ -61,6 +62,7 @@ export function parseStreams(data: unknown, lang: Lang): Stream[] {
               ...(headers ? { headers } : {}),
               subtitles: subtitles([...list(provider.subtitles), ...list(server.subtitles)]),
               ...(skip ? { skip } : {}),
+              ...(provider.thumbnails?.vtt ? { thumbnails: provider.thumbnails.vtt } : {}),
             } as Stream
           }),
       ),

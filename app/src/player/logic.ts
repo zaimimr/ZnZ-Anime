@@ -1,4 +1,4 @@
-import type { SkipRange, Stream } from '../sources/types'
+import type { Episode, SkipRange, Stream } from '../sources/types'
 import type { Status } from '../types'
 
 export function shouldMarkWatched(position: number, duration: number): boolean {
@@ -57,6 +57,14 @@ export function scrubStep(holdCount: number): number {
   if (holdCount < 6) return 10
   if (holdCount < 16) return 30
   return 60
+}
+
+export function nextEpisode(episodes: Episode[], current: number, total: number, skipFiller: boolean): number | null {
+  for (let n = current + 1; n <= total; n++) {
+    const e = episodes.find((x) => x.number === n)
+    if (!skipFiller || e?.filler !== 'filler') return n
+  }
+  return null
 }
 
 export function statusAfter(ep: number, total: number | undefined): Status {
