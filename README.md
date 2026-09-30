@@ -1,6 +1,17 @@
-# ZnZ Anime
+<p align="center">
+  <img src="app/public/logo.svg" width="160" alt="ZnZ Anime logo" />
+</p>
 
-An anime app for Samsung smart TVs (Tizen), made to be used with the TV remote only.
+<h1 align="center">ZnZ Anime</h1>
+
+<p align="center">An anime app for Samsung smart TVs (Tizen), made to be used with the TV remote only.</p>
+
+<p align="center">
+  <a href="https://github.com/zaimimr/znz-anime/releases/latest"><img src="https://img.shields.io/github/v/release/zaimimr/znz-anime" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/zaimimr/znz-anime" alt="MIT license" /></a>
+</p>
+
+![Home screen](docs/screenshots/home.jpg)
 
 - Browse trending shows, this season, recommendations and search
 - Play episodes with intro and outro skipping, scrub previews, subtitles, sub or dub, and autoplay of the next episode
@@ -8,6 +19,11 @@ An anime app for Samsung smart TVs (Tizen), made to be used with the TV remote o
 - New episodes row, a weekly airing schedule and filler badges
 
 Tested on a Samsung The Frame (Tizen 6+) at 1920x1080.
+
+| | |
+|---|---|
+| ![Show details with episodes](docs/screenshots/details.jpg) | ![Player with playback settings](docs/screenshots/player.jpg) |
+| ![Settings](docs/screenshots/settings.jpg) | ![Welcome screen](docs/screenshots/welcome.jpg) |
 
 ## Install on your TV
 
