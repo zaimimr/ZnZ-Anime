@@ -5,7 +5,7 @@ import { AuthError } from '../http'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
-import { activeSkip, countdownAt, cycle, nextStreamIndex, providers, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
+import { activeSkip, countdownAt, nextStreamIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
 import { playableUrl } from '../player/proxy'
 import { clearResume, getResume, setResume } from '../player/resume'
 import { getSettings, saveSettings, type Settings } from '../settings'
@@ -13,6 +13,7 @@ import { resolveFirst, streamsWithFallback } from '../sources/registry'
 import type { Episode, SkipRange, SourceAdapter, SourceShow, Stream } from '../sources/types'
 import { saveEverywhere } from '../sync/writer'
 import type { Lang } from '../types'
+import { Icon } from '../ui/Icon'
 
 interface Loaded {
   info: Details
@@ -24,11 +25,28 @@ interface Loaded {
   episodes: Episode[]
 }
 
+interface Option {
+  label: string
+  detail?: string
+}
+
 interface Row {
   label: string
   value: string
-  change?: (dir: 1 | -1) => void
+  options?: Option[]
+  current?: number
+  pick?: (i: number) => void
+  toggle?: () => void
+  on?: boolean
 }
+
+interface Scrub {
+  origin: number
+  target: number
+  resume: boolean
+}
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 const format = (s: number) => {
   const t = Math.max(0, Math.floor(s))
@@ -61,9 +79,24 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [buffering, setBuffering] = useState(true)
   const [switching, setSwitching] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [countdownFrom, setCountdownFrom] = useState(5)
   const [fallbackSkip, setFallbackSkip] = useState<SkipRange[]>([])
   const [undoIntro, setUndoIntro] = useState<SkipRange | null>(null)
-  const [panel, setPanel] = useState<number | null>(null)
+  const [panel, setPanel] = useState<{ row: number; list: number | null } | null>(null)
+  const [scrub, setScrub] = useState<Scrub | null>(null)
+  const [drawnAt, setDrawnAt] = useState<number | null>(null)
+  const [thumbWorks, setThumbWorks] = useState(true)
+  const blackDraws = useRef(0)
+  const scrubRef = useRef<Scrub | null>(null)
+  const scrubTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const lastKeyAt = useRef(0)
+  const holdCount = useRef(0)
+  const thumb = useRef<HTMLCanvasElement>(null)
+  const panelRows = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    panelRows.current?.querySelector('.focused')?.scrollIntoView({ block: 'nearest' })
+  }, [panel])
   const [prefs, setPrefs] = useState<Settings>(getSettings())
   const [subChoice, setSubChoice] = useState<string | null>(null)
   const marked = useRef(false)
@@ -224,24 +257,105 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!loaded || !stream) return []
     const names = providers(loaded.streams)
     const sameProvider = loaded.streams.map((s, i) => ({ s, i })).filter(({ s }) => s.provider === stream.provider)
-    const subOptions = ['off', ...subs.map((s) => s.label)]
-    const onOff = (on: boolean) => (on ? 'On' : 'Off')
+    const qualities = sameProvider.map(({ s }, n) => {
+      const q = qualityLabel(s.quality)
+      const backups = sameProvider.slice(0, n).filter((o) => qualityLabel(o.s.quality).label === q.label).length
+      return { label: backups ? `${q.label}, backup ${backups}` : q.label, detail: q.detail }
+    })
+    const audio = [
+      { label: 'Japanese', detail: 'With English subtitles' },
+      { label: 'English', detail: 'Dubbed' },
+    ]
+    const serverDetail = (name: string) => {
+      const best = Math.max(0, ...loaded.streams.filter((s) => s.provider === name).map((s) => Number(s.quality?.match(/\d+/)?.[0] ?? 0)))
+      return best ? `Up to ${best}p` : 'Adjusts to your connection'
+    }
+    const subCurrent = chosenSub ? subs.indexOf(chosenSub) + 1 : 0
     return [
-      { label: 'Audio', value: loaded.lang === 'sub' ? 'Japanese (SUB)' : 'English (DUB)', change: () => void switchLang(loaded.lang === 'sub' ? 'dub' : 'sub') },
-      { label: 'Source', value: stream.provider, change: names.length > 1 ? (dir) => switchStream(loaded.streams.findIndex((s) => s.provider === cycle(names, stream.provider, dir))) : undefined },
-      { label: 'Quality', value: stream.quality ?? 'Auto', change: sameProvider.length > 1 ? (dir) => switchStream(cycle(sameProvider.map((o) => o.i), index, dir)) : undefined },
+      { label: 'Audio', value: audio[loaded.lang === 'sub' ? 0 : 1].label, options: audio, current: loaded.lang === 'sub' ? 0 : 1, pick: (i) => void switchLang(i === 0 ? 'sub' : 'dub') },
+      { label: 'Server', value: capitalize(stream.provider), options: names.map((n) => ({ label: capitalize(n), detail: serverDetail(n) })), current: names.indexOf(stream.provider), pick: (i) => switchStream(loaded.streams.findIndex((s) => s.provider === names[i])) },
+      { label: 'Quality', value: qualities[sameProvider.findIndex((o) => o.i === index)]?.label ?? 'Automatic', options: qualities, current: sameProvider.findIndex((o) => o.i === index), pick: (i) => switchStream(sameProvider[i].i) },
       subs.length
-        ? { label: 'Subtitles', value: chosenSub?.label ?? 'Off', change: (dir) => setSubChoice(cycle(subOptions, chosenSub?.label ?? 'off', dir)) }
-        : { label: 'Subtitles', value: loaded.lang === 'sub' ? 'Built into video' : 'None' },
-      { label: 'Skip intro automatically', value: onOff(prefs.autoSkipIntro), change: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) },
-      { label: 'Play next automatically', value: onOff(prefs.autoplayNext), change: () => updatePrefs({ autoplayNext: !prefs.autoplayNext }) },
+        ? { label: 'Subtitles', value: chosenSub?.label ?? 'Off', options: [{ label: 'Off' }, ...subs.map((s) => ({ label: s.label }))], current: subCurrent, pick: (i) => setSubChoice(i === 0 ? 'off' : subs[i - 1].label) }
+        : { label: 'Subtitles', value: loaded.lang === 'sub' ? 'Part of the video' : 'None' },
+      { label: 'Skip intros', value: '', on: prefs.autoSkipIntro, toggle: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) },
+      { label: 'Play next episode', value: '', on: prefs.autoplayNext, toggle: () => updatePrefs({ autoplayNext: !prefs.autoplayNext }) },
     ]
   }, [loaded, stream, index, subs, chosenSub, prefs, switchLang, switchStream, updatePrefs])
 
+  const drawThumb = useCallback(() => {
+    const el = video.current
+    const ctx = thumb.current?.getContext('2d')
+    if (!el || !ctx) return
+    try {
+      ctx.drawImage(el, 0, 0, ctx.canvas.width, ctx.canvas.height)
+      setDrawnAt(el.currentTime)
+    } catch {
+      return setThumbWorks(false)
+    }
+    try {
+      const pixels = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data
+      let lit = 0
+      for (let i = 0; i < pixels.length; i += 4096) lit += pixels[i] + pixels[i + 1] + pixels[i + 2]
+      blackDraws.current = lit === 0 ? blackDraws.current + 1 : 0
+      if (blackDraws.current >= 3) setThumbWorks(false)
+    } catch {
+      return
+    }
+  }, [])
+
+  const endScrub = useCallback((to: 'target' | 'origin') => {
+    const el = video.current
+    const s = scrubRef.current
+    clearTimeout(scrubTimer.current)
+    if (!el || !s) return
+    scrubRef.current = null
+    setScrub(null)
+    setDrawnAt(null)
+    el.currentTime = to === 'target' ? s.target : s.origin
+    if (s.resume) void el.play().catch(() => undefined)
+  }, [])
+
+  const moveScrub = useCallback((dir: 1 | -1, base?: number) => {
+    const el = video.current
+    if (!el || !(el.duration > 0)) return
+    const now = performance.now()
+    holdCount.current = now - lastKeyAt.current < 350 ? holdCount.current + 1 : 0
+    lastKeyAt.current = now
+    const step = base ?? scrubStep(holdCount.current)
+    const current = scrubRef.current ?? { origin: el.currentTime, target: el.currentTime, resume: !el.paused }
+    if (!scrubRef.current) el.pause()
+    const updated = { ...current, target: Math.max(0, Math.min(el.duration - 1, current.target + dir * step)) }
+    scrubRef.current = updated
+    setScrub(updated)
+    if (!el.seeking) el.currentTime = updated.target
+    clearTimeout(scrubTimer.current)
+    scrubTimer.current = setTimeout(() => endScrub('target'), 900)
+  }, [endScrub])
+
+  const onSeeked = () => {
+    setBuffering(false)
+    const el = video.current
+    const s = scrubRef.current
+    if (!el || !s) return
+    drawThumb()
+    if (Math.abs(el.currentTime - s.target) > 0.5) el.currentTime = s.target
+  }
+
+  useEffect(() => () => clearTimeout(scrubTimer.current), [])
+
   useEffect(() => {
     setBackHandler(() => {
-      if (panel !== null) {
+      if (panel?.list != null) {
+        setPanel({ row: panel.row, list: null })
+        return true
+      }
+      if (panel) {
         setPanel(null)
+        return true
+      }
+      if (scrubRef.current) {
+        endScrub('origin')
         return true
       }
       if (countdown !== null) {
@@ -257,7 +371,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       return false
     })
     return () => setBackHandler(null)
-  }, [panel, countdown, undoIntro, setBackHandler])
+  }, [panel, countdown, undoIntro, endScrub, setBackHandler])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -265,25 +379,39 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       if (!el) return
       const action = keyAction(e)
       if (action === 'back') return
-      const seek = (delta: number) => { el.currentTime = Math.max(0, Math.min(el.duration || 0, el.currentTime + delta)) }
-      if (panel !== null) {
-        if (e.key === 'ArrowUp') setPanel(Math.max(0, panel - 1))
-        else if (e.key === 'ArrowDown') setPanel(Math.min(rows.length - 1, panel + 1))
-        else if (e.key === 'ArrowLeft') rows[panel]?.change?.(-1)
-        else if (e.key === 'ArrowRight' || e.key === 'Enter') rows[panel]?.change?.(1)
+      if (panel) {
+        const row = rows[panel.row]
+        if (panel.list !== null && row?.options) {
+          if (e.key === 'ArrowUp') setPanel({ ...panel, list: Math.max(0, panel.list - 1) })
+          else if (e.key === 'ArrowDown') setPanel({ ...panel, list: Math.min(row.options.length - 1, panel.list + 1) })
+          else if (e.key === 'Enter' || e.key === 'ArrowRight') {
+            if (panel.list !== row.current) row.pick?.(panel.list)
+            setPanel({ ...panel, list: null })
+          }
+          else if (e.key === 'ArrowLeft') setPanel({ ...panel, list: null })
+          else return
+        }
+        else if (e.key === 'ArrowUp') setPanel({ row: Math.max(0, panel.row - 1), list: null })
+        else if (e.key === 'ArrowDown') setPanel({ row: Math.min(rows.length - 1, panel.row + 1), list: null })
+        else if (e.key === 'Enter' || e.key === 'ArrowRight') {
+          if (row?.toggle) row.toggle()
+          else if (row?.options && row.options.length > 1) setPanel({ ...panel, list: Math.max(0, row.current ?? 0) })
+        }
+        else if (e.key === 'ArrowLeft') setPanel(null)
         else return
       }
+      else if (e.key === 'ArrowLeft') moveScrub(-1)
+      else if (e.key === 'ArrowRight') moveScrub(1)
+      else if (action === 'rw') moveScrub(-1, 30)
+      else if (action === 'ff') moveScrub(1, 30)
+      else if (scrubRef.current && (e.key === 'Enter' || action === 'playpause' || action === 'play')) endScrub('target')
       else if (countdown !== null && e.key === 'Enter') playNext()
       else if (e.key === 'Enter' && skip) el.currentTime = skip.end
       else if (e.key === 'Enter' || action === 'playpause') { if (el.paused) void el.play(); else el.pause() }
       else if (action === 'play') void el.play()
       else if (action === 'pause') el.pause()
       else if (action === 'stop') back()
-      else if (e.key === 'ArrowLeft') seek(-10)
-      else if (e.key === 'ArrowRight') seek(10)
-      else if (action === 'rw') seek(-30)
-      else if (action === 'ff') seek(30)
-      else if (e.key === 'ArrowDown') { if (loaded) setPanel(0) }
+      else if (e.key === 'ArrowDown') { if (loaded) setPanel({ row: 0, list: null }) }
       else if (e.key !== 'ArrowUp') return
       e.preventDefault()
       e.stopPropagation()
@@ -292,11 +420,11 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [panel, rows, skip, countdown, playNext, back, loaded])
+  }, [panel, rows, skip, countdown, playNext, back, loaded, moveScrub, endScrub])
 
   const onTime = () => {
     const el = video.current
-    if (!el || !loaded) return
+    if (!el || !loaded || scrubRef.current) return
     setTime({ now: el.currentTime, total: el.duration || 0, buffered: bufferedEnd(el) })
     if (shouldMarkWatched(el.currentTime, el.duration)) markWatched()
     const op = activeSkip(ranges, el.currentTime)
@@ -308,6 +436,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const at = countdownAt(ranges, el.duration)
     if (next && prefs.autoplayNext && at !== null && el.currentTime >= at && !countdownFired.current) {
       countdownFired.current = true
+      setCountdownFrom(5)
       setCountdown(5)
     }
   }
@@ -322,7 +451,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const onEnded = () => {
     clearResume(id, ep)
-    if (next && prefs.autoplayNext) setCountdown(10)
+    if (next && prefs.autoplayNext) {
+      setCountdownFrom(10)
+      setCountdown(10)
+    }
   }
 
   if (error) {
@@ -335,9 +467,12 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   }
 
   const title = loaded?.episodes.find((e) => e.number === ep)?.title
-  const loading = !loaded || buffering || switching
+  const loading = !loaded || (buffering && !scrub) || switching
   const pct = (s: number) => (time.total ? (s / time.total) * 100 : 0)
-  const showPrompt = countdown === null && panel === null
+  const showPrompt = countdown === null && panel === null && !scrub
+  const position = scrub?.target ?? time.now
+  const scrubSection = scrub ? bar.find((b) => scrub.target >= b.start && scrub.target < b.end) : undefined
+  const delta = scrub ? scrub.target - scrub.origin : 0
 
   return (
     <div className="player">
@@ -352,7 +487,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         onSeeking={() => setBuffering(true)}
         onPlaying={() => setBuffering(false)}
         onCanPlay={() => setBuffering(false)}
-        onSeeked={() => setBuffering(false)}
+        onSeeked={onSeeked}
         onPlay={() => setPaused(false)}
         onPause={() => setPaused(true)}
         onProgress={(e) => { const buffered = bufferedEnd(e.currentTarget); setTime((t) => ({ ...t, buffered })) }}
@@ -369,62 +504,130 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
           <span>{!loaded ? 'Finding a stream...' : switching ? 'Switching...' : 'Loading...'}</span>
         </div>
       )}
-      {paused && !loading && panel === null && <div className="paused">❚❚</div>}
+      {paused && !loading && panel === null && !scrub && <div className="paused"><Icon name="pause" size={64} /></div>}
       {badge && <div className="badge">{badge}</div>}
 
-      {loaded && (overlay || panel !== null || paused) && (
+      {loaded && (overlay || panel !== null || paused || scrub) && (
         <div className="chrome">
           <div className="top">
             <div className="show-title">{loaded.info.title}</div>
             <div className="muted">Episode {ep}{title ? ` · ${title}` : ''}</div>
           </div>
           <div className="bottom">
-            <div className="sections">
-              {(bar.length ? bar : [{ kind: 'main' as const, start: 0, end: time.total || 1 }]).map((s) => {
-                const size = s.end - s.start
-                const fill = (to: number) => `${Math.max(0, Math.min(1, (to - s.start) / size)) * 100}%`
-                return (
-                  <div key={`${s.kind}-${s.start}`} className={`section ${s.kind}`} style={{ flexGrow: size }}>
-                    {s.kind !== 'main' && <span>{sectionLabels[s.kind]}</span>}
-                    <div className="buffered" style={{ width: fill(time.buffered) }} />
-                    <div className="played" style={{ width: fill(time.now) }} />
-                  </div>
-                )
-              })}
-              <div className="knob" style={{ left: `${pct(time.now)}%` }} />
+            <div className="scrubber">
+              {scrub && (
+                <div className={`preview ${drawnAt === null || Math.abs(drawnAt - scrub.target) > 2 ? 'stale' : ''}`} style={{ left: `clamp(180px, ${pct(scrub.target)}%, calc(100% - 180px))` }}>
+                  <canvas ref={thumb} width={320} height={180} hidden={!thumbWorks} />
+                  <div className="preview-time">{format(scrub.target)}</div>
+                  <div className="preview-meta">{[scrubSection && sectionLabels[scrubSection.kind], `${delta < 0 ? '−' : '+'}${format(Math.abs(delta))}`].filter(Boolean).join(' · ')}</div>
+                </div>
+              )}
+              <div className="sections">
+                {(bar.length ? bar : [{ kind: 'main' as const, start: 0, end: time.total || 1 }]).map((s) => {
+                  const size = s.end - s.start
+                  const fill = (to: number) => `${Math.max(0, Math.min(1, (to - s.start) / size)) * 100}%`
+                  return (
+                    <div key={`${s.kind}-${s.start}`} className={`section ${s.kind}`} style={{ flexGrow: size }}>
+                      {s.kind !== 'main' && <span>{sectionLabels[s.kind]}</span>}
+                      <div className="buffered" style={{ width: fill(time.buffered) }} />
+                      <div className="played" style={{ width: fill(position) }} />
+                    </div>
+                  )
+                })}
+                {scrub && <div className="origin" style={{ left: `${pct(scrub.origin)}%` }} />}
+                <div className={`knob ${scrub ? 'active' : ''}`} style={{ left: `${pct(position)}%` }} />
+              </div>
             </div>
             <div className="meta">
-              <span>{format(time.now)} / {format(time.total)}</span>
-              <span className="muted">{[stream?.provider, stream?.quality, loaded.lang.toUpperCase()].filter(Boolean).join(' · ')}</span>
+              <span className="clock">{format(position)} <span className="muted">/ {format(time.total)}</span></span>
+              <span className="muted">{[stream && capitalize(stream.provider), stream && qualityLabel(stream.quality).label, loaded.lang === 'sub' ? 'Japanese' : 'English'].filter(Boolean).join(' · ')}</span>
             </div>
-            <div className="hints muted">OK {paused ? 'Play' : 'Pause'} · ◀ ▶ 10 s · ⏪ ⏩ 30 s · ▼ Settings · Back Exit</div>
+            <div className="hints">
+              {scrub ? (
+                <>
+                  <span><kbd>OK</kbd> Jump here</span>
+                  <span><kbd><Icon name="back" size={20} /></kbd> Cancel</span>
+                </>
+              ) : (
+                <>
+                  <span><kbd>OK</kbd> {paused ? 'Play' : 'Pause'}</span>
+                  <span><kbd><Icon name="left" size={20} /><Icon name="right" size={20} /></kbd> Hold to scrub</span>
+                  <span><kbd><Icon name="down" size={20} /></kbd> Settings</span>
+                  <span><kbd><Icon name="back" size={20} /></kbd> Exit</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {undoIntro && showPrompt && <div className="skip">Skipped intro · Back to watch it</div>}
-      {skip && !undoIntro && showPrompt && <div className="skip">Skip {skip.kind === 'op' ? 'intro' : 'outro'} (OK)</div>}
+      {undoIntro && showPrompt && <div className="prompt quiet">Intro skipped <span className="hint"><kbd><Icon name="back" size={20} /></kbd> Watch it</span></div>}
+      {skip && !undoIntro && showPrompt && <div className="prompt"><kbd>OK</kbd> Skip {skip.kind === 'op' ? 'intro' : 'outro'}</div>}
       {countdown !== null && next && (
         <div className="up-next">
           {next.thumbnail && <img src={next.thumbnail} alt="" />}
-          <div>
-            <div className="muted">Up next in {countdown}</div>
+          <div className="up-body">
             <div className="up-title">{next.label}</div>
-            <div className="muted small">OK to play now · Back to cancel</div>
+            <div className="up-count">Starts in {countdown}</div>
+            <div className="hints">
+              <span><kbd>OK</kbd> Play now</span>
+              <span><kbd><Icon name="back" size={20} /></kbd> Cancel</span>
+            </div>
           </div>
+          <div className="up-timer" key={next.ep} style={{ animationDuration: `${countdownFrom}s` }} />
         </div>
       )}
 
-      {panel !== null && (
+      {panel && (
         <div className="panel">
-          <h2>Settings</h2>
-          {rows.map((row, i) => (
-            <div key={row.label} className={`panel-row ${i === panel ? 'focused' : ''} ${row.change ? '' : 'fixed'}`}>
-              <span>{row.label}</span>
-              <span>{row.change && i === panel ? `‹ ${row.value} ›` : row.value}</span>
-            </div>
-          ))}
-          <p className="muted small">▲ ▼ choose · ◀ ▶ change · Back close</p>
+          <h2>Playback</h2>
+          <div className="panel-rows" ref={panelRows}>
+          {rows.map((row, i) => {
+            const open = i === panel.row && panel.list !== null && row.options
+            const expandable = !row.toggle && (row.options?.length ?? 0) > 1
+            return (
+              <div key={row.label} className="panel-group">
+                <div className={`panel-row ${i === panel.row && panel.list === null ? 'focused' : ''} ${open ? 'open' : ''} ${row.toggle || expandable ? '' : 'fixed'}`}>
+                  <span>{row.label}</span>
+                  {row.toggle ? (
+                    <span className={`switch ${row.on ? 'on' : ''}`}><span /></span>
+                  ) : (
+                    <span className="value">
+                      {row.value}
+                      {expandable && <span className={`chev ${open ? 'up' : ''}`}><Icon name="down" size={22} /></span>}
+                    </span>
+                  )}
+                </div>
+                {open && (
+                  <div className="options">
+                    {row.options!.map((o, n) => (
+                      <div key={o.label} className={`option ${n === panel.list ? 'focused' : ''} ${n === row.current ? 'current' : ''}`}>
+                        <span className="tick">{n === row.current && <Icon name="check" size={22} />}</span>
+                        <span>
+                          <span className="option-label">{o.label}</span>
+                          {o.detail && <span className="option-detail">{o.detail}</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          </div>
+          <div className="hints panel-hints">
+            {panel.list !== null ? (
+              <>
+                <span><kbd>OK</kbd> Choose</span>
+                <span><kbd><Icon name="back" size={20} /></kbd> Close list</span>
+              </>
+            ) : (
+              <>
+                <span><kbd>OK</kbd> {rows[panel.row]?.toggle ? 'Turn on or off' : 'Open'}</span>
+                <span><kbd><Icon name="back" size={20} /></kbd> Close</span>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

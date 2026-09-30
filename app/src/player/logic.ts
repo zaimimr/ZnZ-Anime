@@ -44,9 +44,19 @@ export function providers(streams: Stream[]): string[] {
   return [...new Set(streams.map((s) => s.provider))]
 }
 
-export function cycle<T>(options: T[], current: T, dir: 1 | -1): T {
-  const i = options.indexOf(current)
-  return options[(i + dir + options.length) % options.length]
+export function qualityLabel(quality: string | undefined): { label: string; detail: string } {
+  const p = Number(quality?.match(/\d+/)?.[0] ?? 0)
+  if (!p) return { label: 'Automatic', detail: 'Adjusts to your connection' }
+  if (p >= 1080) return { label: `${p}p`, detail: 'Sharpest picture' }
+  if (p >= 720) return { label: `${p}p`, detail: 'Sharp, uses less data' }
+  if (p >= 480) return { label: `${p}p`, detail: 'Standard picture' }
+  return { label: `${p}p`, detail: 'Lowest data use' }
+}
+
+export function scrubStep(holdCount: number): number {
+  if (holdCount < 6) return 10
+  if (holdCount < 16) return 30
+  return 60
 }
 
 export function statusAfter(ep: number, total: number | undefined): Status {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aniskip, mergeSkips } from '../src/aniskip'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, countdownAt, cycle, nextStreamIndex, playTarget, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
+import { activeSkip, countdownAt, nextStreamIndex, playTarget, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
 import { clearResume, getResume, setResume } from '../src/player/resume'
 
@@ -126,8 +126,15 @@ describe('sections', () => {
     expect(sections(ranges, 0)).toEqual([])
   })
 
-  it('cycles through options', () => {
-    expect(cycle(['a', 'b', 'c'], 'c', 1)).toBe('a')
-    expect(cycle(['a', 'b', 'c'], 'a', -1)).toBe('c')
+  it('names quality in plain words', () => {
+    expect(qualityLabel('1080p')).toEqual({ label: '1080p', detail: 'Sharpest picture' })
+    expect(qualityLabel('360p').detail).toBe('Lowest data use')
+    expect(qualityLabel(undefined).label).toBe('Automatic')
+  })
+
+  it('scrubs faster the longer a key is held', () => {
+    expect(scrubStep(0)).toBe(10)
+    expect(scrubStep(8)).toBe(30)
+    expect(scrubStep(30)).toBe(60)
   })
 })
