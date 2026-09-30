@@ -43,7 +43,7 @@ export function Home() {
         <Focusable className="btn" autoFocus onEnter={() => push({ name: 'search' })}>Search</Focusable>
         <Focusable className="btn" onEnter={() => push({ name: 'settings' })}>Settings</Focusable>
       </header>
-      <PosterRow title="Continue Watching" focusKey="row-continue" cards={watching.map((i) => i.card)} badge={(c) => `Next: episode ${(progressOf.get(c.id) ?? 0) + 1}`} />
+      <PosterRow title="Continue Watching" focusKey="row-continue" cards={watching.slice(0, 30).map((i) => i.card)} badge={(c) => `Next: episode ${(progressOf.get(c.id) ?? 0) + 1}`} />
       <PosterRow
         title="Top Trending"
         focusKey="row-trending"
@@ -57,7 +57,7 @@ export function Home() {
         }
       />
       <PosterRow title="Airing This Season" focusKey="row-airing" cards={airing} />
-      <PosterRow title="Planning" focusKey="row-planning" cards={planning.map((i) => i.card)} />
+      <PosterRow title="Planning" focusKey="row-planning" cards={planning.slice(0, 30).map((i) => i.card)} />
     </div>
   )
 }

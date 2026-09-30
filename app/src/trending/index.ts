@@ -1,30 +1,34 @@
-import { trendingWithHistory } from '../anilist/api'
+import { type TrendItem, trendingWithHistory } from '../anilist/api'
 import { cached } from '../cache'
 import type { Card } from '../types'
 import { rankTrends } from './rank'
 
 export type TrendWindow = 'day' | 'week' | 'month'
 
-const windows: Record<TrendWindow, { days: number; pages: number }> = {
-  day: { days: 1, pages: 1 },
-  week: { days: 7, pages: 2 },
-  month: { days: 30, pages: 3 },
-}
+const days: Record<TrendWindow, number> = { day: 1, week: 7, month: 30 }
+const POOL_PAGES = 3
 
-export function topTrending(window: TrendWindow): Promise<Card[]> {
-  return cached(`trending.${window}`, 3_600_000, async () => {
-    const { days, pages } = windows[window]
-    const since = Math.floor(Date.now() / 1000) - days * 86400
-    const cards = new Map<number, Card>()
-    const rows: { mediaId: number; trending: number }[] = []
-    for (let page = 1; page <= pages; page++) {
+let inflight: Promise<TrendItem[]> | null = null
+
+function trendPool(): Promise<TrendItem[]> {
+  inflight ??= cached('trending.pool', 3_600_000, async () => {
+    const items: TrendItem[] = []
+    for (let page = 1; page <= POOL_PAGES; page++) {
       const result = await trendingWithHistory(page)
-      for (const item of result.items) {
-        cards.set(item.card.id, item.card)
-        for (const day of item.history) if (day.date >= since) rows.push({ mediaId: item.card.id, trending: day.trending })
-      }
+      items.push(...result.items)
       if (!result.hasNext) break
     }
-    return rankTrends(rows).map((id) => cards.get(id)!)
+    return items
+  }).finally(() => {
+    inflight = null
   })
+  return inflight
+}
+
+export async function topTrending(window: TrendWindow): Promise<Card[]> {
+  const items = await trendPool()
+  const since = Math.floor(Date.now() / 1000) - days[window] * 86400
+  const cards = new Map(items.map((item) => [item.card.id, item.card]))
+  const rows = items.flatMap((item) => item.history.filter((d) => d.date >= since).map((d) => ({ mediaId: item.card.id, trending: d.trending })))
+  return rankTrends(rows, 30).map((id) => cards.get(id)!)
 }

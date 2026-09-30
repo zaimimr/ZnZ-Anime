@@ -5,7 +5,7 @@ export function Focusable({ onEnter, focusKey, className = '', children, autoFoc
   const { ref, focused, focusSelf } = useFocusable<unknown, HTMLDivElement>({
     focusKey,
     onEnterPress: () => onEnter?.(),
-    onFocus: () => ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }),
+    onFocus: () => ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
   })
   useEffect(() => {
     if (autoFocus) focusSelf()

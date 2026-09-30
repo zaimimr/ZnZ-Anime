@@ -39,9 +39,16 @@ describe('topTrending', () => {
     expect(cards.map((c) => c.id)).toEqual([3, 2, 1])
   })
 
-  it('serves from cache within an hour', async () => {
+  it('fetches once and serves every window from the same data', async () => {
     await topTrending('day')
+    await topTrending('week')
+    await topTrending('month')
     await topTrending('day')
-    expect(trendingWithHistory).toHaveBeenCalledTimes(1)
+    expect(trendingWithHistory).toHaveBeenCalledTimes(2)
+  })
+
+  it('shares one fetch between windows requested at the same time', async () => {
+    await Promise.all([topTrending('day'), topTrending('week'), topTrending('month')])
+    expect(trendingWithHistory).toHaveBeenCalledTimes(2)
   })
 })
