@@ -1,8 +1,14 @@
 {
   "name": "znz-anime",
   "private": true,
+  "packageManager": "pnpm@10.7.1",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "pnpm -r test",
+    "lint": "pnpm --filter app lint",
+    "typecheck": "pnpm --filter worker typecheck",
     "dev": "pnpm --filter app dev",
     "build": "pnpm --filter app build",
     "check:sources": "pnpm --filter app check:sources"
