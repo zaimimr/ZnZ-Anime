@@ -117,7 +117,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const inFlight = useRef(false)
   const latest = useRef<Loaded | null>(null)
   const triedAdapters = useRef<string[]>([])
-  const reloaded = useRef(false)
+  const reloadedAt = useRef<number | null>(null)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
@@ -281,15 +281,15 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const recover = useEffectEvent((blocked: boolean) => {
     const el = video.current
     if (inFlight.current || error) return
-    if (blocked || reloaded.current || !el) return nextStream(blocked)
-    reloaded.current = true
+    if (blocked || reloadedAt.current !== null || !el) return nextStream(blocked)
+    reloadedAt.current = el.currentTime
     keepPosition()
     setBadge('Reconnecting')
     setAttempt((a) => a + 1)
   })
 
   useEffect(() => {
-    reloaded.current = false
+    reloadedAt.current = null
   }, [loaded, index])
 
   useEffect(() => {
@@ -537,6 +537,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!el || !loaded || scrubRef.current) return
     const total = knownDuration(el.duration)
     setTime({ now: el.currentTime, total, buffered: bufferedEnd(el) })
+    if (reloadedAt.current !== null && el.currentTime > reloadedAt.current + 30) reloadedAt.current = null
     if (!skipLength && total) setSkipLength(Math.round(total))
     const range = activeSkip(ranges, el.currentTime)
     const wanted = range?.verified && (range.kind === 'op' ? prefs.autoSkipIntro : prefs.autoSkipOutro && hasSceneAfterOutro(range, el.duration))
@@ -596,7 +597,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         onLoadStart={() => setBuffering(true)}
         onWaiting={() => setBuffering(true)}
         onSeeking={() => setBuffering(true)}
-        onPlaying={() => { setBuffering(false); reloaded.current = false; if (stream) setServer(id, stream.provider) }}
+        onPlaying={() => { setBuffering(false); if (stream) setServer(id, stream.provider) }}
         onCanPlay={() => setBuffering(false)}
         onSeeked={onSeeked}
         onPlay={() => setPaused(false)}
