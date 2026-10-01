@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
 import { aniskip, mergeSkips } from '../aniskip'
 import { recordPlay } from '../history'
@@ -7,7 +7,7 @@ import { type LibraryEntry, libraryEntry } from '../library'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
-import { activeSkip, countdownAt, hasSceneAfterOutro, healthyStreams, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, preferredIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
+import { activeSkip, countdownAt, hasSceneAfterOutro, healthyStreams, knownDuration, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, preferredIndex, providers, qualityLabel, reachableStreams, resumePoint, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
 import { playableUrl, streamWorks } from '../player/proxy'
 import { loadThumbs, thumbAt, type ThumbCue } from '../player/thumbnails'
 import { clearResume, getResume, getServer, setResume, setServer } from '../player/resume'
@@ -26,7 +26,7 @@ interface Loaded {
   lang: Lang
   total: number
   episodes: Episode[]
-  entry: LibraryEntry
+  entry: LibraryEntry | null
 }
 
 interface Option {
@@ -40,6 +40,8 @@ interface Row {
   options?: Option[]
   current?: number
   pick?: (i: number) => void
+  streams?: number[]
+  langs?: Lang[]
   toggle?: () => void
   on?: boolean
 }
@@ -88,10 +90,11 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [matchedSkip, setMatchedSkip] = useState<SkipRange[]>([])
   const [undoSkip, setUndoSkip] = useState<SkipRange | null>(null)
   const [finished, setFinished] = useState(false)
-  const [panel, setPanel] = useState<{ row: number; list: number | null } | null>(null)
+  const [panel, setPanel] = useState<{ row: string; list: number | null } | null>(null)
   const [scrub, setScrub] = useState<Scrub | null>(null)
-  const [thumbs, setThumbs] = useState<ThumbCue[]>([])
-  const [otherLang, setOtherLang] = useState(false)
+  const [thumbState, setThumbs] = useState<{ src: string; cues: ThumbCue[] }>({ src: '', cues: [] })
+  const [otherState, setOtherLang] = useState<{ of: Loaded | null; ok: boolean }>({ of: null, ok: false })
+  const [skipLength, setSkipLength] = useState(0)
   const scrubRef = useRef<Scrub | null>(null)
   const pendingSeek = useRef<{ target: number; retried: boolean } | null>(null)
   const scrubTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -109,77 +112,63 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const countdownFired = useRef(false)
   const countdownActive = useRef(false)
   const startAt = useRef(getResume(id, ep))
+  const fromSave = useRef(true)
+  const holdResume = useRef(0)
+  const inFlight = useRef(false)
+  const latest = useRef<Loaded | null>(null)
   const triedAdapters = useRef<string[]>([])
   const reloaded = useRef(false)
   const [attempt, setAttempt] = useState(0)
 
-  const load = useCallback(async (skipAdapters: string[]): Promise<void> => {
-    const info = await details(id)
-    const [found, entry] = await Promise.all([
-      resolveFirst({ anilistId: id, titles: info.titles }, skipAdapters),
-      libraryEntry(info).catch((): LibraryEntry => ({ progress: Number.POSITIVE_INFINITY, score: 0 })),
-    ])
-    if (!found) return setError('No source available.')
-    triedAdapters.current = [...skipAdapters, found.adapter.id]
-    const wanted = getSettings().lang
-    const result = await streamsWithFallback(found.adapter, found.show, ep, wanted)
-    const { lang } = result
-    const reachable = hosts.auth ? result.streams : result.streams.filter((s) => !s.headers)
-    if (!reachable.length && result.streams.length) return setError('This episode needs your server. Add it in Settings > Server.')
-    const streams = await healthyStreams(reachable, (s) => streamWorks(playableUrl(s.url, s.headers), s.format))
-    if (!streams.length) return load(triedAdapters.current)
-    if (lang !== wanted) setBadge(`${wanted.toUpperCase()} not available, playing ${lang.toUpperCase()}`)
-    setIndex(preferredIndex(streams, getServer(id)))
-    setLoaded({ info, adapter: found.adapter, show: found.show, streams, lang, total: info.episodes ?? found.episodes.length, episodes: found.episodes, entry })
+  useEffect(() => {
+    latest.current = loaded
+  }, [loaded])
+
+  const load = useCallback((skipAdapters: string[]) => {
+    if (inFlight.current) return
+    inFlight.current = true
+    const run = async (skip: string[]): Promise<void> => {
+      const info = await details(id)
+      const [found, entry] = await Promise.all([
+        resolveFirst({ anilistId: id, titles: info.titles }, skip),
+        libraryEntry(info).catch(() => null),
+      ])
+      if (!found) return setError('No source available.')
+      triedAdapters.current = [...skip, found.adapter.id]
+      const wanted = getSettings().lang
+      const result = await streamsWithFallback(found.adapter, found.show, ep, wanted)
+      const { lang } = result
+      const reachable = reachableStreams(result.streams, Boolean(hosts.auth))
+      if (!reachable.length && result.streams.length) return setError('This episode needs your server. Add it in Settings > Server.')
+      const streams = await healthyStreams(reachable, (s) => streamWorks(playableUrl(s.url, s.headers), s.format))
+      if (!streams.length) return run(triedAdapters.current)
+      if (lang !== wanted) setBadge(`${wanted.toUpperCase()} not available, playing ${lang.toUpperCase()}`)
+      setIndex(preferredIndex(streams, getServer(id)))
+      setLoaded({ info, adapter: found.adapter, show: found.show, streams, lang, total: info.episodes ?? found.episodes.length, episodes: found.episodes, entry })
+    }
+    run(skipAdapters)
+      .catch(() => setError('The sources are not responding. Try again in a moment.'))
+      .finally(() => { inFlight.current = false })
   }, [id, ep])
 
   useEffect(() => {
-    load([]).catch(() => setError('Could not load this episode.'))
+    load([])
   }, [load])
 
   const malId = loaded?.info.idMal
-  const length = Math.round(time.total)
   useEffect(() => {
-    setMatchedSkip([])
-    if (!malId || !(length > 0)) return
+    if (!malId || !skipLength) return
     let live = true
-    aniskip(malId, ep, length).then((r) => live && setMatchedSkip(r)).catch(() => undefined)
+    aniskip(malId, ep, skipLength).then((r) => live && setMatchedSkip(r)).catch(() => undefined)
     return () => { live = false }
-  }, [malId, ep, length])
+  }, [malId, ep, skipLength])
 
-  const nextStream = useCallback((skipProvider = false) => {
-    if (!loaded) return
-    const el = video.current
-    if (countdownActive.current || (el && nearEnd(el.currentTime, el.duration))) return setFinished(true)
-    startAt.current = video.current?.currentTime || startAt.current
-    const next = nextStreamIndex(loaded.streams, index, skipProvider)
-    setBadge('This server stopped working, trying another one')
-    if (next >= 0) setIndex(next)
-    else load(triedAdapters.current).catch(() => setError('No source available.'))
-  }, [loaded, index, load])
-
-  const recover = useCallback((blocked: boolean) => {
-    const el = video.current
-    if (blocked || reloaded.current || !el) return nextStream(blocked)
-    reloaded.current = true
-    startAt.current = el.currentTime || startAt.current
-    setBadge('Reconnecting')
-    setAttempt((a) => a + 1)
-  }, [nextStream])
-
-  useEffect(() => {
-    reloaded.current = false
-  }, [loaded, index])
-
-  useEffect(() => {
-    const stream = loaded?.streams[index]
-    const el = video.current
-    if (!stream || !el) return
-    setBuffering(true)
-    const detach = attachStream(el, playableUrl(stream.url, stream.headers), stream.format, recover)
-    void el.play().catch(() => undefined)
-    return detach
-  }, [loaded, index, attempt, recover])
+  const keepPosition = useCallback(() => {
+    const now = video.current?.currentTime
+    if (!now || now < holdResume.current) return
+    startAt.current = now
+    fromSave.current = false
+  }, [])
 
   const stream = loaded?.streams[index]
   const subs = useMemo(() => stream?.subtitles ?? [], [stream])
@@ -211,21 +200,30 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     return () => clearTimeout(timer)
   }, [overlay, paused, panel, loaded, activity])
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const el = video.current
-      if (!el || !shouldSaveResume(el)) return
-      setResume(id, ep, el.currentTime)
-      recordPlay(id, ep, shouldMarkWatched(el.currentTime, el.duration))
-    }, 5000)
-    return () => clearInterval(timer)
-  }, [id, ep])
-
   const markWatched = useCallback(() => {
-    if (!loaded || marked.current || ep <= loaded.entry.progress) return
+    const entry = loaded?.entry
+    if (!loaded || !entry || marked.current || ep <= entry.progress) return
     marked.current = true
-    void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes), progress: ep, score: loaded.entry.score }).catch(() => undefined)
+    void saveEverywhere({ anilistId: id, malId: loaded.info.idMal, status: statusAfter(ep, loaded.info.episodes, entry.status), progress: ep, score: entry.score }).catch(() => { marked.current = false })
   }, [loaded, id, ep])
+
+  const saveProgress = useEffectEvent(() => {
+    const el = video.current
+    if (finished || !el || !shouldSaveResume(el, holdResume.current)) return
+    holdResume.current = 0
+    const done = shouldMarkWatched(el.currentTime, el.duration)
+    if (done) {
+      clearResume(id, ep)
+      markWatched()
+    }
+    else setResume(id, ep, el.currentTime)
+    recordPlay(id, ep, done)
+  })
+
+  useEffect(() => {
+    const timer = setInterval(saveProgress, 5000)
+    return () => clearInterval(timer)
+  }, [])
 
   const next = useMemo(() => {
     if (!loaded) return null
@@ -249,11 +247,60 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   useEffect(() => {
     countdownActive.current = countdown !== null
-    if (countdown === null) return
+    if (countdown === null || (paused && !finished)) return
     if (countdown === 0) return playNext()
     const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
     return () => clearTimeout(timer)
-  }, [countdown, playNext])
+  }, [countdown, paused, finished, playNext])
+
+  const finish = () => {
+    if (finished) return
+    setFinished(true)
+    clearResume(id, ep)
+    recordPlay(id, ep, true)
+    video.current?.pause()
+    markWatched()
+    if (next && prefs.autoplayNext && countdown === null) {
+      countdownFired.current = true
+      setCountdownFrom(10)
+      setCountdown(10)
+    }
+  }
+
+  const nextStream = (skipProvider: boolean) => {
+    if (!loaded) return
+    const el = video.current
+    if (countdownActive.current || (el && nearEnd(el.currentTime, el.duration))) return finish()
+    keepPosition()
+    const next = nextStreamIndex(loaded.streams, index, skipProvider)
+    setBadge('This server stopped working, trying another one')
+    if (next >= 0) setIndex(next)
+    else load(triedAdapters.current)
+  }
+
+  const recover = useEffectEvent((blocked: boolean) => {
+    const el = video.current
+    if (inFlight.current || error) return
+    if (blocked || reloaded.current || !el) return nextStream(blocked)
+    reloaded.current = true
+    keepPosition()
+    setBadge('Reconnecting')
+    setAttempt((a) => a + 1)
+  })
+
+  useEffect(() => {
+    reloaded.current = false
+  }, [loaded, index])
+
+  useEffect(() => {
+    const stream = loaded?.streams[index]
+    const el = video.current
+    if (!stream || !el) return
+    setBuffering(true)
+    const detach = attachStream(el, playableUrl(stream.url, stream.headers), stream.format, (blocked) => recover(blocked))
+    void el.play().catch(() => undefined)
+    return detach
+  }, [loaded, index, attempt])
 
   const ranges = useMemo(() => mergeSkips(stream?.skip ?? loaded?.episodes.find((e) => e.number === ep)?.skip, matchedSkip, time.total || Infinity), [stream, loaded, ep, matchedSkip, time.total])
   const skip = activeSkip(ranges, time.now)
@@ -272,27 +319,30 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   }, [])
 
   const switchStream = useCallback((i: number) => {
-    startAt.current = video.current?.currentTime || startAt.current
+    keepPosition()
     setIndex(i)
-  }, [])
+  }, [keepPosition])
 
   const switchLang = useCallback(async (lang: Lang) => {
     if (!loaded) return
-    startAt.current = video.current?.currentTime || startAt.current
+    const before = loaded
+    keepPosition()
     setSwitching(true)
     try {
-      const result = await streamsWithFallback(loaded.adapter, loaded.show, ep, lang)
-      if (result.lang !== lang || !result.streams.length) return setBadge(`${lang.toUpperCase()} not available for this episode`)
-      const streams = await healthyStreams(result.streams, (s) => streamWorks(playableUrl(s.url, s.headers), s.format))
+      const result = await streamsWithFallback(before.adapter, before.show, ep, lang)
+      const reachable = reachableStreams(result.streams, Boolean(hosts.auth))
+      if (result.lang !== lang || !reachable.length) return setBadge(`${lang.toUpperCase()} not available for this episode`)
+      const streams = await healthyStreams(reachable, (s) => streamWorks(playableUrl(s.url, s.headers), s.format))
+      if (latest.current !== before) return
       updatePrefs({ lang })
-      setIndex(preferredIndex(streams, loaded.streams[index]?.provider ?? null))
-      setLoaded({ ...loaded, streams, lang })
+      setIndex(preferredIndex(streams, before.streams[index]?.provider ?? null))
+      setLoaded((current) => (current === before ? { ...before, streams, lang } : current))
     } catch {
       setBadge(`Could not load ${lang.toUpperCase()}`)
     } finally {
       setSwitching(false)
     }
-  }, [loaded, ep, index, updatePrefs])
+  }, [loaded, ep, index, updatePrefs, keepPosition])
 
   const rows = useMemo((): Row[] => {
     if (!loaded || !stream) return []
@@ -309,39 +359,40 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     }
     const qualityCurrent = qualities.findIndex((q) => q.label === qualityLabel(stream.quality).label)
     const result: Row[] = []
-    if (otherLang) result.push({ label: 'Audio', value: audio[loaded.lang === 'sub' ? 0 : 1].label, options: audio, current: loaded.lang === 'sub' ? 0 : 1, pick: (i) => void switchLang(i === 0 ? 'sub' : 'dub') })
-    if (names.length > 1) result.push({ label: 'Server', value: capitalize(stream.provider), options: names.map((n) => ({ label: capitalize(n), detail: serverDetail(n) })), current: names.indexOf(stream.provider), pick: (i) => switchStream(loaded.streams.findIndex((s) => s.provider === names[i])) })
-    if (qualities.length > 1) result.push({ label: 'Quality', value: qualities[qualityCurrent]?.label ?? 'Automatic', options: qualities, current: qualityCurrent, pick: (i) => switchStream(qualities[i].stream) })
+    if (otherState.of === loaded && otherState.ok) result.push({ label: 'Audio', value: audio[loaded.lang === 'sub' ? 0 : 1].label, options: audio, current: loaded.lang === 'sub' ? 0 : 1, langs: ['sub', 'dub'] })
+    if (names.length > 1) result.push({ label: 'Server', value: capitalize(stream.provider), options: names.map((n) => ({ label: capitalize(n), detail: serverDetail(n) })), current: names.indexOf(stream.provider), streams: names.map((n) => loaded.streams.findIndex((s) => s.provider === n)) })
+    if (qualities.length > 1) result.push({ label: 'Quality', value: qualities[qualityCurrent]?.label ?? 'Automatic', options: qualities, current: qualityCurrent, streams: qualities.map((q) => q.stream) })
     if (subs.length) result.push({ label: 'Subtitles', value: chosenSub?.label ?? 'Off', options: [{ label: 'Off' }, ...subs.map((s) => ({ label: s.label }))], current: chosenSub ? subs.indexOf(chosenSub) + 1 : 0, pick: (i) => setSubChoice(i === 0 ? 'off' : subs[i - 1].label) })
     result.push({ label: 'Skip intros', value: '', on: prefs.autoSkipIntro, toggle: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) })
     result.push({ label: 'Skip outros', value: '', on: prefs.autoSkipOutro, toggle: () => updatePrefs({ autoSkipOutro: !prefs.autoSkipOutro }) })
     if (loaded.episodes.some((e) => e.filler)) result.push({ label: 'Skip filler episodes', value: '', on: prefs.skipFiller, toggle: () => updatePrefs({ skipFiller: !prefs.skipFiller }) })
     result.push({ label: 'Play next episode', value: '', on: prefs.autoplayNext, toggle: () => updatePrefs({ autoplayNext: !prefs.autoplayNext }) })
     return result
-  }, [loaded, stream, subs, chosenSub, prefs, otherLang, switchLang, switchStream, updatePrefs])
+  }, [loaded, stream, subs, chosenSub, prefs, otherState, updatePrefs])
 
   useEffect(() => {
     if (!loaded) return
     const other: Lang = loaded.lang === 'sub' ? 'dub' : 'sub'
     let live = true
-    setOtherLang(false)
-    loaded.adapter.stream(loaded.show, ep, other).then((s) => live && setOtherLang(s.length > 0)).catch(() => undefined)
+    loaded.adapter.stream(loaded.show, ep, other).then((s) => live && setOtherLang({ of: loaded, ok: s.length > 0 })).catch(() => undefined)
     return () => { live = false }
   }, [loaded, ep])
 
   const thumbSource = stream?.thumbnails ? stream : loaded?.streams.find((s) => s.thumbnails)
   useEffect(() => {
-    if (!thumbSource?.thumbnails) return setThumbs([])
+    const src = thumbSource?.thumbnails
+    if (!src) return
     let live = true
-    loadThumbs(thumbSource.thumbnails, thumbSource.headers)
+    loadThumbs(src, thumbSource.headers)
       .then((cues) => {
         if (!live) return
-        setThumbs(cues)
+        setThumbs({ src, cues })
         for (const url of new Set(cues.map((c) => c.url))) new Image().src = url
       })
-      .catch(() => live && setThumbs([]))
+      .catch(() => undefined)
     return () => { live = false }
   }, [thumbSource])
+  const thumbs = thumbSource?.thumbnails && thumbState.src === thumbSource.thumbnails ? thumbState.cues : []
 
   const endScrub = useCallback((to: 'target' | 'origin') => {
     const el = video.current
@@ -351,6 +402,12 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     scrubRef.current = null
     setScrub(null)
     const goal = to === 'target' ? s.target : s.origin
+    holdResume.current = 0
+    if (!nearEnd(goal, el.duration)) {
+      setFinished(false)
+      countdownFired.current = false
+      setCountdown(null)
+    }
     pendingSeek.current = { target: goal, retried: false }
     el.currentTime = goal
     if (s.resume) void el.play().catch(() => undefined)
@@ -417,28 +474,39 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   }, [panel, countdown, undoSkip, endScrub, setBackHandler])
 
   useEffect(() => {
+    const choose = (row: Row, i: number) => {
+      if (row.streams) switchStream(row.streams[i])
+      else if (row.langs) void switchLang(row.langs[i])
+      else row.pick?.(i)
+    }
     const onKey = (e: KeyboardEvent) => {
       const el = video.current
       if (!el) return
       const action = keyAction(e)
       if (action === 'back') return
+      if (action === 'stop') {
+        e.preventDefault()
+        e.stopPropagation()
+        return back()
+      }
       if (panel) {
-        const row = rows[panel.row]
+        const focus = Math.max(0, rows.findIndex((r) => r.label === panel.row))
+        const row = rows[focus]
         if (panel.list !== null && row?.options) {
           if (e.key === 'ArrowUp') setPanel({ ...panel, list: Math.max(0, panel.list - 1) })
           else if (e.key === 'ArrowDown') setPanel({ ...panel, list: Math.min(row.options.length - 1, panel.list + 1) })
           else if (e.key === 'Enter' || e.key === 'ArrowRight') {
-            if (panel.list !== row.current) row.pick?.(panel.list)
+            if (panel.list !== row.current) choose(row, panel.list)
             setPanel({ ...panel, list: null })
           }
           else if (e.key === 'ArrowLeft') setPanel({ ...panel, list: null })
           else return
         }
-        else if (e.key === 'ArrowUp') setPanel({ row: Math.max(0, panel.row - 1), list: null })
-        else if (e.key === 'ArrowDown') setPanel({ row: Math.min(rows.length - 1, panel.row + 1), list: null })
+        else if (e.key === 'ArrowUp') setPanel({ row: rows[Math.max(0, focus - 1)].label, list: null })
+        else if (e.key === 'ArrowDown') setPanel({ row: rows[Math.min(rows.length - 1, focus + 1)].label, list: null })
         else if (e.key === 'Enter' || e.key === 'ArrowRight') {
           if (row?.toggle) row.toggle()
-          else if (row?.options && row.options.length > 1) setPanel({ ...panel, list: Math.max(0, row.current ?? 0) })
+          else if (row?.options && row.options.length > 1) setPanel({ row: row.label, list: Math.max(0, row.current ?? 0) })
         }
         else if (e.key === 'ArrowLeft') setPanel(null)
         else return
@@ -449,12 +517,11 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       else if (action === 'ff') moveScrub(1, 30)
       else if (scrubRef.current && (e.key === 'Enter' || action === 'playpause' || action === 'play')) endScrub('target')
       else if (countdown !== null && e.key === 'Enter') playNext()
-      else if (e.key === 'Enter' && skip) el.currentTime = skip.end
+      else if (e.key === 'Enter' && skip) { holdResume.current = 0; el.currentTime = skip.end }
       else if (e.key === 'Enter' || action === 'playpause') { if (el.paused) void el.play(); else el.pause() }
       else if (action === 'play') void el.play()
       else if (action === 'pause') el.pause()
-      else if (action === 'stop') back()
-      else if (e.key === 'ArrowDown') { if (rows.length) setPanel({ row: 0, list: null }) }
+      else if (e.key === 'ArrowDown') { if (rows.length) setPanel({ row: rows[0].label, list: null }) }
       else if (e.key !== 'ArrowUp') return
       e.preventDefault()
       e.stopPropagation()
@@ -463,13 +530,14 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [panel, rows, skip, countdown, playNext, back, loaded, moveScrub, endScrub])
+  }, [panel, rows, skip, countdown, playNext, back, loaded, moveScrub, endScrub, switchStream, switchLang])
 
   const onTime = () => {
     const el = video.current
     if (!el || !loaded || scrubRef.current) return
-    setTime({ now: el.currentTime, total: el.duration || 0, buffered: bufferedEnd(el) })
-    if (shouldMarkWatched(el.currentTime, el.duration)) markWatched()
+    const total = knownDuration(el.duration)
+    setTime({ now: el.currentTime, total, buffered: bufferedEnd(el) })
+    if (!skipLength && total) setSkipLength(Math.round(total))
     const range = activeSkip(ranges, el.currentTime)
     const wanted = range?.verified && (range.kind === 'op' ? prefs.autoSkipIntro : prefs.autoSkipOutro && hasSceneAfterOutro(range, el.duration))
     if (range && wanted && skipped.current[range.kind] === 'pending') {
@@ -487,26 +555,16 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const onMeta = () => {
     const el = video.current
-    if (el && startAt.current > 0) {
-      el.currentTime = startAt.current
-      startAt.current = 0
-    }
+    if (!el) return
+    const target = fromSave.current ? resumePoint(startAt.current, el.duration) : startAt.current
+    startAt.current = 0
+    fromSave.current = false
+    if (!(target > 0)) return
+    holdResume.current = target
+    pendingSeek.current = { target, retried: false }
+    el.currentTime = target
   }
 
-  const onEnded = () => setFinished(true)
-
-  useEffect(() => {
-    if (!finished) return
-    clearResume(id, ep)
-    recordPlay(id, ep, true)
-    video.current?.pause()
-    markWatched()
-    if (next && prefs.autoplayNext && countdown === null) {
-      countdownFired.current = true
-      setCountdownFrom(10)
-      setCountdown(10)
-    }
-  }, [finished])
 
   if (error) {
     return (
@@ -525,6 +583,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const scrubSection = scrub ? bar.find((b) => scrub.target >= b.start && scrub.target < b.end) : undefined
   const delta = scrub ? scrub.target - scrub.origin : 0
   const cue = scrub ? thumbAt(thumbs, scrub.target) : undefined
+  const focus = panel ? Math.max(0, rows.findIndex((r) => r.label === panel.row)) : -1
 
   return (
     <div className="player">
@@ -533,7 +592,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         crossOrigin="anonymous"
         onTimeUpdate={onTime}
         onLoadedMetadata={onMeta}
-        onEnded={onEnded}
+        onEnded={finish}
         onLoadStart={() => setBuffering(true)}
         onWaiting={() => setBuffering(true)}
         onSeeking={() => setBuffering(true)}
@@ -639,11 +698,11 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
           <h2>Playback</h2>
           <div className="panel-rows" ref={panelRows}>
           {rows.map((row, i) => {
-            const open = i === panel.row && panel.list !== null && row.options
+            const open = i === focus && panel.list !== null && row.options
             const expandable = !row.toggle && (row.options?.length ?? 0) > 1
             return (
               <div key={row.label} className="panel-group">
-                <div className={`panel-row ${i === panel.row && panel.list === null ? 'focused' : ''} ${open ? 'open' : ''} ${row.toggle || expandable ? '' : 'fixed'}`}>
+                <div className={`panel-row ${i === focus && panel.list === null ? 'focused' : ''} ${open ? 'open' : ''} ${row.toggle || expandable ? '' : 'fixed'}`}>
                   <span>{row.label}</span>
                   {row.toggle ? (
                     <span className={`switch ${row.on ? 'on' : ''}`}><span /></span>
@@ -679,7 +738,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
               </>
             ) : (
               <>
-                <span><kbd>OK</kbd> {rows[panel.row]?.toggle ? 'Turn on or off' : 'Open'}</span>
+                <span><kbd>OK</kbd> {rows[focus]?.toggle ? 'Turn on or off' : 'Open'}</span>
                 <span><kbd><Icon name="back" size={20} /></kbd> Close</span>
               </>
             )}

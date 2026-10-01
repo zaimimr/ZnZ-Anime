@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseThumbs, thumbAt } from '../src/player/thumbnails'
+import { loadThumbs, parseThumbs, thumbAt } from '../src/player/thumbnails'
 import { aniskip, mergeSkips } from '../src/aniskip'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, countdownAt, healthyStreams, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, playTarget, preferredIndex, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
+import { activeSkip, countdownAt, healthyStreams, knownDuration, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, playTarget, preferredIndex, qualityLabel, reachableStreams, resumePoint, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
+import type { Stream } from '../src/sources/types'
 import { clearResume, getResume, getServer, setResume, setServer } from '../src/player/resume'
 
 beforeEach(() => localStorage.clear())
@@ -80,6 +81,12 @@ describe('player logic', () => {
     expect(statusAfter(11, 12)).toBe('watching')
     expect(statusAfter(5, undefined)).toBe('watching')
   })
+
+  it('keeps a rewatch going until the last episode', () => {
+    expect(statusAfter(3, 12, 'rewatching')).toBe('rewatching')
+    expect(statusAfter(12, 12, 'rewatching')).toBe('completed')
+    expect(statusAfter(3, 12, 'paused')).toBe('watching')
+  })
 })
 
 describe('nextStreamIndex', () => {
@@ -104,6 +111,37 @@ describe('shouldSaveResume', () => {
     expect(shouldSaveResume({ currentTime: 300, ended: false })).toBe(true)
     expect(shouldSaveResume({ currentTime: 0, ended: false })).toBe(false)
     expect(shouldSaveResume({ currentTime: 1559, ended: true })).toBe(false)
+  })
+
+  it('keeps the saved spot until playback gets back to it', () => {
+    expect(shouldSaveResume({ currentTime: 20, ended: false }, 600)).toBe(false)
+    expect(shouldSaveResume({ currentTime: 601, ended: false }, 600)).toBe(true)
+  })
+})
+
+describe('resumePoint', () => {
+  it('starts over instead of reopening in the credits', () => {
+    expect(resumePoint(600, 1440)).toBe(600)
+    expect(resumePoint(1300, 1440)).toBe(0)
+    expect(resumePoint(1430, 1440)).toBe(0)
+    expect(resumePoint(600, Number.NaN)).toBe(600)
+  })
+})
+
+describe('knownDuration', () => {
+  it('treats missing or endless durations as unknown', () => {
+    expect(knownDuration(1440)).toBe(1440)
+    expect(knownDuration(Number.POSITIVE_INFINITY)).toBe(0)
+    expect(knownDuration(Number.NaN)).toBe(0)
+  })
+})
+
+describe('reachableStreams', () => {
+  it('drops streams that need the server when none is set up', () => {
+    const open: Stream = { url: 'a', format: 'hls', provider: 'x', subtitles: [] }
+    const locked: Stream = { ...open, headers: { Referer: 'r' } }
+    expect(reachableStreams([open, locked], false)).toEqual([open])
+    expect(reachableStreams([open, locked], true)).toEqual([open, locked])
   })
 })
 
@@ -205,5 +243,16 @@ describe('thumbnails', () => {
     ])
     expect(thumbAt(cues, 6)?.x).toBe(320)
     expect(thumbAt(cues, 999)?.x).toBe(320)
+  })
+
+  it('leaves cue URLs the server already signed alone', async () => {
+    const signed = 'https://auth.test/proxy?u=abc&r=def&s=sig'
+    const vtt = `WEBVTT\n\n00:00:00.000 --> 00:00:05.000\n${signed}#xywh=0,0,320,180\n\n00:00:05.000 --> 00:00:10.000\nsprite.jpg#xywh=320,0,320,180\n`
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(vtt)))
+    const cues = await loadThumbs('https://cdn.test/a/preview.vtt', { Referer: 'https://kwik.cx/' })
+    vi.unstubAllGlobals()
+    expect(cues[0].url).toBe(signed)
+    expect(new URL(cues[1].url).pathname).toBe('/proxy')
+    expect(b64urlDecode(new URL(cues[1].url).searchParams.get('u')!)).toBe('https://cdn.test/a/sprite.jpg')
   })
 })

@@ -28,7 +28,7 @@ export function continueWatching(list: ListItem[], history: Played[], unlisted: 
   return [...list, ...unlisted.filter((u) => !list.some((i) => i.card.id === u.card.id))]
     .filter((i) => {
       const h = played.get(i.card.id)
-      if (!h) return i.entry.status === 'watching'
+      if (!h) return i.entry.status === 'watching' || i.entry.status === 'rewatching'
       return i.entry.status !== 'dropped' && !finishedShow(i, h)
     })
     .sort((a, b) => recent(b) - recent(a))

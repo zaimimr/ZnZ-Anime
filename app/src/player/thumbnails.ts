@@ -1,3 +1,4 @@
+import { hosts } from '../hosts'
 import { request } from '../http'
 import { playableUrl } from './proxy'
 
@@ -23,7 +24,7 @@ export async function loadThumbs(url: string, headers?: Record<string, string>):
   const res = await request(playableUrl(url, headers), undefined, { retries: 0 })
   const text = await res.text()
   if (!text.startsWith('WEBVTT')) return []
-  return parseThumbs(text, url).map((c) => ({ ...c, url: playableUrl(c.url, headers) }))
+  return parseThumbs(text, url).map((c) => ({ ...c, url: c.url.startsWith(`${hosts.auth}/proxy`) ? c.url : playableUrl(c.url, headers) }))
 }
 
 export function thumbAt(cues: ThumbCue[], time: number): ThumbCue | undefined {

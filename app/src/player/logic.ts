@@ -85,8 +85,9 @@ export function nextEpisode(episodes: Episode[], current: number, total: number,
   return null
 }
 
-export function statusAfter(ep: number, total: number | undefined): Status {
-  return total !== undefined && ep >= total ? 'completed' : 'watching'
+export function statusAfter(ep: number, total: number | undefined, current?: Status): Status {
+  if (total !== undefined && ep >= total) return 'completed'
+  return current === 'rewatching' ? 'rewatching' : 'watching'
 }
 
 export function nextStreamIndex(streams: Stream[], current: number, skipProvider = false): number {
@@ -97,8 +98,20 @@ export function nextStreamIndex(streams: Stream[], current: number, skipProvider
   return -1
 }
 
-export function shouldSaveResume(el: { currentTime: number; ended: boolean }): boolean {
-  return el.currentTime > 0 && !el.ended
+export function shouldSaveResume(el: { currentTime: number; ended: boolean }, holdUntil = 0): boolean {
+  return el.currentTime > 0 && !el.ended && el.currentTime >= holdUntil
+}
+
+export function resumePoint(saved: number, duration: number): number {
+  return nearEnd(saved, duration) || shouldMarkWatched(saved, duration) ? 0 : saved
+}
+
+export function knownDuration(duration: number): number {
+  return Number.isFinite(duration) && duration > 0 ? duration : 0
+}
+
+export function reachableStreams(streams: Stream[], auth: boolean): Stream[] {
+  return auth ? streams : streams.filter((s) => !s.headers)
 }
 
 export function preferredIndex(streams: Stream[], provider: string | null): number {

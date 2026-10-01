@@ -24,6 +24,11 @@ describe('history', () => {
     expect(continueWatching(list, history).map((i) => i.card.id)).toEqual([3, 2, 1])
   })
 
+  it('shows unplayed rewatches like watching ones', () => {
+    const list = [item(1, 'rewatching', 500), item(2, 'watching', 100), item(3, 'completed')]
+    expect(continueWatching(list, []).map((i) => i.card.id)).toEqual([1, 2])
+  })
+
   it('adds shows played without being on the list and drops finished ones', () => {
     const list = [item(1, 'watching', 500)]
     const history = [{ id: 1, ep: 12, at: 900, done: true }, { id: 9, ep: 2, at: 800, done: false }]
