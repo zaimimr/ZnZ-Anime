@@ -108,4 +108,17 @@ describe('/proxy', () => {
     const u = b64urlEncode('file:///etc/passwd')
     expect((await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)).status).toBe(400)
   })
+
+  it('strips a fake image header from video segments and labels them as video', async () => {
+    const packet = (n: number) => { const p = new Uint8Array(188).fill(n); p[0] = 0x47; return p }
+    const video = new Uint8Array([...packet(1), ...packet(2), ...packet(3)])
+    const fake = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x47, 0, 0, 0])
+    const body = new Uint8Array([...fake, ...video])
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { headers: { 'content-type': 'image/png', 'content-length': String(body.length) } })))
+    const u = b64urlEncode('https://cdn.test/a/seg')
+    const res = await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
+    expect(res.headers.get('content-type')).toBe('video/mp2t')
+    expect(res.headers.get('content-length')).toBe(String(video.length))
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(video)
+  })
 })

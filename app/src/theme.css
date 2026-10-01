@@ -78,12 +78,12 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .player .bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 200px 96px 56px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.55) 40%, rgba(0, 0, 0, 0.88)); }
 .player .scrubber { position: relative; }
 .player .sections { position: relative; display: flex; gap: 6px; height: 8px; }
-.player .section { position: relative; flex-basis: 0; min-width: 8px; height: 100%; background: rgba(255, 255, 255, 0.22); border-radius: 4px; overflow: visible; }
+.player .section { position: relative; flex-basis: 0; min-width: 8px; height: 100%; background: rgba(255, 255, 255, 0.16); border-radius: 4px; overflow: visible; }
 .player .section .buffered, .player .section .played { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
-.player .section .buffered { background: rgba(255, 255, 255, 0.28); }
+.player .section .buffered { background: rgba(255, 255, 255, 0.55); }
 .player .section .played { background: var(--accent); }
 .player .section.op, .player .section.ed { background: rgba(245, 184, 61, 0.28); }
-.player .section.op .buffered, .player .section.ed .buffered { background: rgba(245, 184, 61, 0.2); }
+.player .section.op .buffered, .player .section.ed .buffered { background: rgba(245, 184, 61, 0.55); }
 .player .section.op .played, .player .section.ed .played { background: var(--gold); }
 .player .section > span { position: absolute; bottom: 20px; left: 0; font-size: 20px; font-weight: 600; letter-spacing: 0.02em; color: var(--gold); white-space: nowrap; }
 .player .knob { position: absolute; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }

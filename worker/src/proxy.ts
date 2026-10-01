@@ -21,6 +21,34 @@ export function rewritePlaylist(body: string, playlistUrl: string, proxyBase: st
 
 const BROWSER_UA = 'Mozilla/5.0 (SMART-TV; Linux; Tizen 9.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
 
+const TS_PACKET = 188
+const SNIFF_BYTES = 2048
+
+async function readHead(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = []
+  let size = 0
+  while (size < SNIFF_BYTES) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    size += value.length
+  }
+  const head = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    head.set(chunk, offset)
+    offset += chunk.length
+  }
+  return head
+}
+
+export function tsStart(bytes: Uint8Array): number {
+  for (let i = 0; i + TS_PACKET * 2 < bytes.length; i++) {
+    if (bytes[i] === 0x47 && bytes[i + TS_PACKET] === 0x47 && bytes[i + TS_PACKET * 2] === 0x47) return i
+  }
+  return -1
+}
+
 async function readRest(reader: ReadableStreamDefaultReader<Uint8Array>, first: Uint8Array): Promise<string> {
   const chunks = [first]
   for (;;) {
@@ -77,10 +105,16 @@ export async function proxy(req: Request): Promise<Response> {
   }
   if (!upstream.ok || !upstream.body) return new Response(upstream.body, { status: upstream.status, headers: outHeaders })
   const reader = upstream.body.getReader()
-  const { value } = await reader.read()
-  const first = value ?? new Uint8Array()
+  const first = await readHead(reader)
   const isPlaylist = new TextDecoder().decode(first.slice(0, 32)).trimStart().startsWith('#EXTM3U')
-  if (!isPlaylist) return new Response(replay(reader, first), { status: upstream.status, headers: outHeaders })
+  if (!isPlaylist) {
+    const start = upstream.status === 200 ? tsStart(first) : -1
+    if (start < 0) return new Response(replay(reader, first), { status: upstream.status, headers: outHeaders })
+    outHeaders.set('content-type', 'video/mp2t')
+    const length = Number(outHeaders.get('content-length'))
+    if (start > 0 && length) outHeaders.set('content-length', String(length - start))
+    return new Response(replay(reader, first.subarray(start)), { status: upstream.status, headers: outHeaders })
+  }
   const text = await readRest(reader, first)
   outHeaders.delete('content-length')
   outHeaders.set('content-type', 'application/vnd.apple.mpegurl')
