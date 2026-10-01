@@ -93,6 +93,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [thumbs, setThumbs] = useState<ThumbCue[]>([])
   const [otherLang, setOtherLang] = useState(false)
   const scrubRef = useRef<Scrub | null>(null)
+  const pendingSeek = useRef<{ target: number; retried: boolean } | null>(null)
   const scrubTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const lastKeyAt = useRef(0)
   const holdCount = useRef(0)
@@ -349,7 +350,9 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!el || !s) return
     scrubRef.current = null
     setScrub(null)
-    el.currentTime = to === 'target' ? s.target : s.origin
+    const goal = to === 'target' ? s.target : s.origin
+    pendingSeek.current = { target: goal, retried: false }
+    el.currentTime = goal
     if (s.resume) void el.play().catch(() => undefined)
   }, [])
 
@@ -365,7 +368,6 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const updated = { ...current, target: Math.max(0, Math.min(el.duration - 1, current.target + dir * step)) }
     scrubRef.current = updated
     setScrub(updated)
-    if (!el.seeking) el.currentTime = updated.target
     clearTimeout(scrubTimer.current)
     scrubTimer.current = setTimeout(() => endScrub('target'), 900)
   }, [endScrub])
@@ -373,9 +375,14 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const onSeeked = () => {
     setBuffering(false)
     const el = video.current
-    const s = scrubRef.current
-    if (!el || !s) return
-    if (Math.abs(el.currentTime - s.target) > 0.5) el.currentTime = s.target
+    const seek = pendingSeek.current
+    if (!el || !seek) return
+    if (Math.abs(el.currentTime - seek.target) > 2 && !seek.retried) {
+      seek.retried = true
+      el.currentTime = seek.target
+      return
+    }
+    pendingSeek.current = null
   }
 
   useEffect(() => () => clearTimeout(scrubTimer.current), [])
