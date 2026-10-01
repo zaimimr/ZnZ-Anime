@@ -49,20 +49,42 @@ export function tsStart(bytes: Uint8Array): number {
   return -1
 }
 
-async function readRest(reader: ReadableStreamDefaultReader<Uint8Array>, first: Uint8Array): Promise<string> {
+async function readAll(reader: ReadableStreamDefaultReader<Uint8Array>, first: Uint8Array): Promise<Uint8Array> {
   const chunks = [first]
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+    }
+  } catch {
+    return join(chunks)
   }
+  return join(chunks)
+}
+
+function join(chunks: Uint8Array[]): Uint8Array {
   const bytes = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0))
   let offset = 0
   for (const chunk of chunks) {
     bytes.set(chunk, offset)
     offset += chunk.length
   }
-  return new TextDecoder().decode(bytes)
+  return bytes
+}
+
+const REFETCHES = 3
+
+async function completeSegment(target: string, headers: Headers, reader: ReadableStreamDefaultReader<Uint8Array>, first: Uint8Array, start: number): Promise<Uint8Array> {
+  let best = (await readAll(reader, first)).subarray(start)
+  for (let i = 0; i < REFETCHES && best.length % TS_PACKET !== 0; i++) {
+    const retry = await fetch(target, { headers })
+    if (retry.status !== 200 || !retry.body) break
+    const bytes = await readAll(retry.body.getReader(), new Uint8Array())
+    const offset = tsStart(bytes)
+    if (offset >= 0 && bytes.length - offset > best.length) best = bytes.subarray(offset)
+  }
+  return best
 }
 
 function replay(reader: ReadableStreamDefaultReader<Uint8Array>, first: Uint8Array): ReadableStream<Uint8Array> {
@@ -110,12 +132,12 @@ export async function proxy(req: Request): Promise<Response> {
   if (!isPlaylist) {
     const start = upstream.status === 200 ? tsStart(first) : -1
     if (start < 0) return new Response(replay(reader, first), { status: upstream.status, headers: outHeaders })
+    const body = await completeSegment(target, headers, reader, first, start)
     outHeaders.set('content-type', 'video/mp2t')
-    const length = Number(outHeaders.get('content-length'))
-    if (start > 0 && length) outHeaders.set('content-length', String(length - start))
-    return new Response(replay(reader, first.subarray(start)), { status: upstream.status, headers: outHeaders })
+    outHeaders.set('content-length', String(body.length))
+    return new Response(body, { status: upstream.status, headers: outHeaders })
   }
-  const text = await readRest(reader, first)
+  const text = new TextDecoder().decode(await readAll(reader, first))
   outHeaders.delete('content-length')
   outHeaders.set('content-type', 'application/vnd.apple.mpegurl')
   return new Response(rewritePlaylist(text, target, `${url.origin}/proxy`, referer), { status: upstream.status, headers: outHeaders })

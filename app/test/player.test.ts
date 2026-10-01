@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseThumbs, thumbAt } from '../src/player/thumbnails'
 import { aniskip, mergeSkips } from '../src/aniskip'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, countdownAt, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, playTarget, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
+import { activeSkip, countdownAt, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, playTarget, preferredIndex, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
-import { clearResume, getResume, setResume } from '../src/player/resume'
+import { clearResume, getResume, getServer, setResume, setServer } from '../src/player/resume'
 
 beforeEach(() => localStorage.clear())
 
@@ -38,6 +38,19 @@ describe('player logic', () => {
     expect(nextEpisode(eps, 1, 4, false)).toBe(2)
     expect(nextEpisode(eps, 1, 4, true)).toBe(3)
     expect(nextEpisode(eps, 3, 4, true)).toBeNull()
+  })
+
+  it('starts on the server used last time', () => {
+    const streams = [{ provider: 'a' }, { provider: 'b' }, { provider: 'b' }].map((s) => ({ ...s, url: '', format: 'hls' as const, subtitles: [] }))
+    expect(preferredIndex(streams, 'b')).toBe(1)
+    expect(preferredIndex(streams, 'z')).toBe(0)
+    expect(preferredIndex(streams, null)).toBe(0)
+    expect(getServer(5)).toBeNull()
+    setServer(5, 'b')
+    expect(getServer(5)).toBe('b')
+    expect(getServer(6)).toBe('b')
+    setServer(6, 'a')
+    expect(getServer(5)).toBe('b')
   })
 
   it('offers a next episode only when the source has it', () => {

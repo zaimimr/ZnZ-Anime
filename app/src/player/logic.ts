@@ -100,3 +100,7 @@ export function nextStreamIndex(streams: Stream[], current: number, skipProvider
 export function shouldSaveResume(el: { currentTime: number; ended: boolean }): boolean {
   return el.currentTime > 0 && !el.ended
 }
+
+export function preferredIndex(streams: Stream[], provider: string | null): number {
+  return Math.max(0, streams.findIndex((s) => s.provider === provider))
+}

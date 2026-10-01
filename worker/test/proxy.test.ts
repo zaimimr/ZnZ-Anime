@@ -121,4 +121,17 @@ describe('/proxy', () => {
     expect(res.headers.get('content-length')).toBe(String(video.length))
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(video)
   })
+
+  it('fetches a video segment again when it arrives cut short', async () => {
+    const packet = (n: number) => { const p = new Uint8Array(188).fill(n); p[0] = 0x47; return p }
+    const full = new Uint8Array([...packet(1), ...packet(2), ...packet(3), ...packet(4)])
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(full.slice(0, 500), { headers: { 'content-type': 'image/jpeg' } }))
+      .mockResolvedValueOnce(new Response(full, { headers: { 'content-type': 'image/jpeg' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const u = b64urlEncode('https://cdn.test/a/seg')
+    const res = await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(full)
+  })
 })

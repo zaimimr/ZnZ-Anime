@@ -7,10 +7,10 @@ import { type LibraryEntry, libraryEntry } from '../library'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
-import { activeSkip, countdownAt, hasSceneAfterOutro, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
+import { activeSkip, countdownAt, hasSceneAfterOutro, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, preferredIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
 import { playableUrl } from '../player/proxy'
 import { loadThumbs, thumbAt, type ThumbCue } from '../player/thumbnails'
-import { clearResume, getResume, setResume } from '../player/resume'
+import { clearResume, getResume, getServer, setResume, setServer } from '../player/resume'
 import { getSettings, saveSettings, type Settings } from '../settings'
 import { resolveFirst, streamsWithFallback } from '../sources/registry'
 import type { Episode, SkipRange, SourceAdapter, SourceShow, Stream } from '../sources/types'
@@ -63,6 +63,7 @@ const format = (s: number) => {
 const sectionLabels = { op: 'Intro', ed: 'Outro', main: '' }
 
 function bufferedEnd(el: HTMLVideoElement): number {
+  if (window.tizen) return 0
   for (let i = 0; i < el.buffered.length; i++) {
     if (el.buffered.start(i) <= el.currentTime + 0.5 && el.currentTime <= el.buffered.end(i)) return el.buffered.end(i)
   }
@@ -124,7 +125,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!streams.length && result.streams.length) return setError('This episode needs your server. Add it in Settings > Server.')
     if (!streams.length) return load(triedAdapters.current)
     if (lang !== wanted) setBadge(`${wanted.toUpperCase()} not available, playing ${lang.toUpperCase()}`)
-    setIndex(0)
+    setIndex(preferredIndex(streams, getServer(id)))
     setLoaded({ info, adapter: found.adapter, show: found.show, streams, lang, total: info.episodes ?? found.episodes.length, episodes: found.episodes, entry })
   }, [id, ep])
 
@@ -165,7 +166,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const stream = loaded?.streams[index]
   const subs = useMemo(() => stream?.subtitles ?? [], [stream])
-  const chosenSub = subChoice === 'off' ? null : (subs.find((s) => s.label === subChoice) ?? subs.find((s) => s.default) ?? subs[0] ?? null)
+  const chosenSub = subChoice === 'off' ? null : (subs.find((s) => s.label === subChoice) ?? subs.find((s) => /^en/i.test(s.lang) || /english/i.test(s.label)) ?? subs.find((s) => s.default) ?? subs[0] ?? null)
 
   useEffect(() => {
     const tracks = video.current?.textTracks
@@ -173,7 +174,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const apply = () => {
       for (const t of Array.from(tracks)) {
         if (t.kind !== 'subtitles' && t.kind !== 'captions') continue
-        t.mode = chosenSub && t.label === chosenSub.label && t.language === chosenSub.lang ? 'showing' : 'disabled'
+        t.mode = chosenSub && t.label === chosenSub.label ? 'showing' : 'disabled'
       }
     }
     apply()
@@ -266,14 +267,14 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       const result = await streamsWithFallback(loaded.adapter, loaded.show, ep, lang)
       if (result.lang !== lang || !result.streams.length) return setBadge(`${lang.toUpperCase()} not available for this episode`)
       updatePrefs({ lang })
-      setIndex(0)
+      setIndex(preferredIndex(result.streams, loaded.streams[index]?.provider ?? null))
       setLoaded({ ...loaded, streams: result.streams, lang })
     } catch {
       setBadge(`Could not load ${lang.toUpperCase()}`)
     } finally {
       setSwitching(false)
     }
-  }, [loaded, ep, updatePrefs])
+  }, [loaded, ep, index, updatePrefs])
 
   const rows = useMemo((): Row[] => {
     if (!loaded || !stream) return []
@@ -512,7 +513,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         onLoadStart={() => setBuffering(true)}
         onWaiting={() => setBuffering(true)}
         onSeeking={() => setBuffering(true)}
-        onPlaying={() => setBuffering(false)}
+        onPlaying={() => { setBuffering(false); if (stream) setServer(id, stream.provider) }}
         onCanPlay={() => setBuffering(false)}
         onSeeked={onSeeked}
         onPlay={() => setPaused(false)}
@@ -520,8 +521,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         onProgress={(e) => { const buffered = bufferedEnd(e.currentTarget); setTime((t) => ({ ...t, buffered })) }}
         autoPlay
       >
-        {stream?.subtitles.map((sub, i) => (
-          <track key={sub.url} kind="subtitles" src={playableUrl(sub.url, stream.headers)} srcLang={sub.lang} label={sub.label} default={sub.default ?? i === 0} />
+        {stream?.subtitles.map((sub) => (
+          <track key={sub.url} kind="subtitles" src={playableUrl(sub.url, stream.headers)} srcLang={sub.lang} label={sub.label} default={sub === chosenSub} />
         ))}
       </video>
 
