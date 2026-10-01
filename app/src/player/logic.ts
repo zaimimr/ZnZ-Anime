@@ -79,7 +79,8 @@ export function scrubStep(holdCount: number): number {
 export function nextEpisode(episodes: Episode[], current: number, total: number, skipFiller: boolean): number | null {
   for (let n = current + 1; n <= total; n++) {
     const e = episodes.find((x) => x.number === n)
-    if (!skipFiller || e?.filler !== 'filler') return n
+    if (!e) return null
+    if (!skipFiller || e.filler !== 'filler') return n
   }
   return null
 }

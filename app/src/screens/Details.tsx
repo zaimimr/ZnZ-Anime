@@ -1,6 +1,7 @@
 import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { type Details, details } from '../anilist/api'
+import { readHistory } from '../history'
 import { type LibraryEntry, libraryEntry } from '../library'
 import { useRouter } from '../nav/router'
 import { statusLabels, statusOrder } from '../list'
@@ -169,7 +170,8 @@ export function DetailsScreen({ id }: { id: number }) {
   const watched = entry.progress
   const available = source.state === 'ready' ? source.episodes.length : undefined
   const total = info.episodes ?? available
-  const firstTarget = playTarget(watched, available, info.episodes)
+  const last = readHistory().find((h) => h.id === info.id)
+  const firstTarget = last && !last.done ? last.ep : playTarget(Math.max(watched, last?.ep ?? 0), available, info.episodes)
   const skipFiller = getSettings().skipFiller && source.state === 'ready'
   const target = skipFiller && source.episodes.find((e) => e.number === firstTarget)?.filler === 'filler' ? (nextEpisode(source.episodes, firstTarget, available ?? firstTarget, true) ?? firstTarget) : firstTarget
   const relations = new Map(info.related.map((r) => [r.id, r.relation]))

@@ -33,6 +33,7 @@ export async function saveEverywhere(change: Change): Promise<void> {
     if (target === 'mal' && !change.malId) continue
     auth = (await attempt(target, change)) ?? auth
   }
+  invalidateLibrary()
   if (auth) throw auth
 }
 

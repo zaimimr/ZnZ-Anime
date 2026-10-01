@@ -40,6 +40,13 @@ describe('player logic', () => {
     expect(nextEpisode(eps, 3, 4, true)).toBeNull()
   })
 
+  it('offers a next episode only when the source has it', () => {
+    const eps = [{ number: 1 }, { number: 2 }, { number: 3, filler: 'filler' as const }]
+    expect(nextEpisode(eps, 2, 24, false)).toBe(3)
+    expect(nextEpisode(eps, 3, 24, false)).toBeNull()
+    expect(nextEpisode(eps, 2, 24, true)).toBeNull()
+  })
+
   it('picks the episode to play', () => {
     expect(playTarget(3, 28, 28)).toBe(4)
     expect(playTarget(3, undefined, 28)).toBe(4)

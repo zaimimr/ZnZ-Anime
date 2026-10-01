@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Details, details } from '../anilist/api'
 import { aniskip, mergeSkips } from '../aniskip'
+import { recordPlay } from '../history'
 import { hosts } from '../hosts'
 import { type LibraryEntry, libraryEntry } from '../library'
 import { keyAction } from '../nav/keys'
@@ -195,7 +196,9 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   useEffect(() => {
     const timer = setInterval(() => {
       const el = video.current
-      if (el && shouldSaveResume(el)) setResume(id, ep, el.currentTime)
+      if (!el || !shouldSaveResume(el)) return
+      setResume(id, ep, el.currentTime)
+      recordPlay(id, ep, shouldMarkWatched(el.currentTime, el.duration))
     }, 5000)
     return () => clearInterval(timer)
   }, [id, ep])
@@ -213,7 +216,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       const upcoming = loaded.episodes.find((e) => e.number === n)
       return { id, ep: n, label: `Episode ${n}${upcoming?.title ? ` · ${upcoming.title}` : ''}`, thumbnail: upcoming?.thumbnail }
     }
-    const sequel = loaded.info.related.find((r) => r.relation === 'Sequel')
+    const finale = loaded.info.episodes !== undefined && ep >= loaded.info.episodes
+    const sequel = finale ? loaded.info.related.find((r) => r.relation === 'Sequel' && r.released) : undefined
     return sequel ? { id: sequel.id, ep: 1, label: sequel.title, thumbnail: sequel.cover } : null
   }, [loaded, id, ep, prefs.skipFiller])
 
@@ -221,6 +225,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (!next) return
     markWatched()
     clearResume(id, ep)
+    recordPlay(id, ep, true)
     replace({ name: 'player', id: next.id, ep: next.ep })
   }, [next, markWatched, replace, id, ep])
 
@@ -468,6 +473,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   useEffect(() => {
     if (!finished) return
     clearResume(id, ep)
+    recordPlay(id, ep, true)
     video.current?.pause()
     markWatched()
     if (next && prefs.autoplayNext && countdown === null) {

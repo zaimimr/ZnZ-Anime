@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { recommendations, season } from '../anilist/api'
+import { continueWatching, readHistory, unlistedItems } from '../history'
 import { fetchLibrary } from '../library'
 import { newEpisodes, progressLabel } from '../list'
 import { useRouter } from '../nav/router'
@@ -13,6 +14,8 @@ const windowLabels: Record<TrendWindow, string> = { day: 'Day', week: 'Week', mo
 export function Home() {
   const { push } = useRouter()
   const [list, setList] = useState<ListItem[]>([])
+  const [history] = useState(readHistory)
+  const [unlisted, setUnlisted] = useState<ListItem[]>([])
   const [airing, setAiring] = useState<Card[]>([])
   const [trendWindow, setTrendWindow] = useState<TrendWindow>('day')
   const [trending, setTrending] = useState<Card[]>([])
@@ -22,18 +25,24 @@ export function Home() {
   const fail = () => setOffline(true)
 
   useEffect(() => {
-    fetchLibrary().then(setList).catch(fail)
+    fetchLibrary()
+      .then((items) => {
+        setList(items)
+        return unlistedItems(items, history).then(setUnlisted)
+      })
+      .catch(fail)
     season().then(setAiring).catch(fail)
-  }, [])
+  }, [history])
 
   useEffect(() => {
     topTrending(trendWindow).then(setTrending).catch(fail)
   }, [trendWindow])
 
-  const watching = list.filter((i) => i.entry.status === 'watching').sort((a, b) => b.updatedAt - a.updatedAt)
+  const watching = continueWatching(list, history, unlisted)
   const planning = list.filter((i) => i.entry.status === 'planning')
   const fresh = newEpisodes(list)
-  const byId = new Map(list.map((i) => [i.card.id, i]))
+  const byId = new Map([...unlisted, ...list].map((i) => [i.card.id, i]))
+  const played = new Map(history.map((h) => [h.id, h]))
   const seed = [...list].filter((i) => i.entry.status === 'watching' || i.entry.status === 'completed').sort((a, b) => b.updatedAt - a.updatedAt)[0]
   const seedId = seed?.card.id
   const seedTitle = seed?.card.title ?? ''
@@ -49,8 +58,11 @@ export function Home() {
   const continueLabel = (c: Card) => {
     const item = byId.get(c.id)
     if (!item) return undefined
-    if (item.nextAiring && item.entry.progress >= (item.aired ?? 0)) return progressLabel(item)
-    return `Next: episode ${item.entry.progress + 1}`
+    const last = played.get(c.id)
+    if (last && !last.done) return `Resume episode ${last.ep}`
+    const upcoming = Math.max(item.entry.progress, last?.ep ?? 0) + 1
+    if (item.nextAiring && upcoming > (item.aired ?? 0)) return progressLabel(item)
+    return `Next: episode ${upcoming}`
   }
 
   return (
