@@ -122,16 +122,14 @@ describe('/proxy', () => {
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(video)
   })
 
-  it('fetches a video segment again when it arrives cut short', async () => {
-    const packet = (n: number) => { const p = new Uint8Array(188).fill(n); p[0] = 0x47; return p }
-    const full = new Uint8Array([...packet(1), ...packet(2), ...packet(3), ...packet(4)])
+  it('asks again once when upstream answers with a web page', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(full.slice(0, 500), { headers: { 'content-type': 'image/jpeg' } }))
-      .mockResolvedValueOnce(new Response(full, { headers: { 'content-type': 'image/jpeg' } }))
+      .mockResolvedValueOnce(new Response('<html>', { status: 403, headers: { 'content-type': 'text/html' } }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'image/jpeg' } }))
     vi.stubGlobal('fetch', fetchMock)
     const u = b64urlEncode('https://cdn.test/a/seg')
     const res = await worker.fetch(new Request(`https://auth.test/proxy?u=${u}`), env)
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(new Uint8Array(await res.arrayBuffer())).toEqual(full)
+    expect(res.status).toBe(200)
   })
 })

@@ -104,3 +104,10 @@ export function shouldSaveResume(el: { currentTime: number; ended: boolean }): b
 export function preferredIndex(streams: Stream[], provider: string | null): number {
   return Math.max(0, streams.findIndex((s) => s.provider === provider))
 }
+
+export async function healthyStreams(streams: Stream[], works: (stream: Stream) => Promise<boolean>): Promise<Stream[]> {
+  const names = providers(streams)
+  const results = await Promise.all(names.map((name) => works(streams.find((s) => s.provider === name)!).catch(() => false)))
+  const good = new Set(names.filter((_, i) => results[i]))
+  return good.size ? streams.filter((s) => good.has(s.provider)) : streams
+}

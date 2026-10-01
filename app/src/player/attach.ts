@@ -1,6 +1,6 @@
 import Hls from 'hls.js'
 
-const STALL_MS = 20_000
+const STUCK_SECONDS = 12
 
 export function nativePlayback(el: HTMLVideoElement, format: 'hls' | 'mp4'): boolean {
   if (format !== 'hls') return true
@@ -9,19 +9,14 @@ export function nativePlayback(el: HTMLVideoElement, format: 'hls' | 'mp4'): boo
 }
 
 function watchStalls(el: HTMLVideoElement, onStall: () => void): () => void {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const arm = () => {
-    clearTimeout(timer)
-    timer = setTimeout(() => !el.paused && onStall(), STALL_MS)
-  }
-  const disarm = () => clearTimeout(timer)
-  const events: [string, () => void][] = [['waiting', arm], ['playing', disarm], ['pause', disarm], ['ended', disarm]]
-  for (const [name, fn] of events) el.addEventListener(name, fn)
-  arm()
-  return () => {
-    disarm()
-    for (const [name, fn] of events) el.removeEventListener(name, fn)
-  }
+  let stuck = 0
+  const timer = setInterval(() => {
+    stuck = !el.paused && el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA ? stuck + 1 : 0
+    if (stuck < STUCK_SECONDS) return
+    stuck = 0
+    onStall()
+  }, 1000)
+  return () => clearInterval(timer)
 }
 
 export function attachStream(el: HTMLVideoElement, url: string, format: 'hls' | 'mp4', onFatal: (blocked: boolean) => void): () => void {

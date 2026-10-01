@@ -6,3 +6,17 @@ export function playableUrl(url: string, headers?: Record<string, string>): stri
   if (!referer) return url
   return `${hosts.auth}/proxy?u=${b64urlEncode(url)}&r=${b64urlEncode(referer)}`
 }
+
+const CHECK_MS = 6000
+
+export async function streamWorks(url: string, format: 'hls' | 'mp4'): Promise<boolean> {
+  if (format !== 'hls') return true
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CHECK_MS)
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    return res.ok && (await res.text()).trimStart().startsWith('#EXTM3U')
+  } finally {
+    clearTimeout(timer)
+  }
+}

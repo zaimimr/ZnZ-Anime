@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseThumbs, thumbAt } from '../src/player/thumbnails'
 import { aniskip, mergeSkips } from '../src/aniskip'
 import { b64urlDecode } from '../src/b64'
-import { activeSkip, countdownAt, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, playTarget, preferredIndex, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
+import { activeSkip, countdownAt, healthyStreams, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, playTarget, preferredIndex, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../src/player/logic'
 import { playableUrl } from '../src/player/proxy'
 import { clearResume, getResume, getServer, setResume, setServer } from '../src/player/resume'
 
@@ -38,6 +38,13 @@ describe('player logic', () => {
     expect(nextEpisode(eps, 1, 4, false)).toBe(2)
     expect(nextEpisode(eps, 1, 4, true)).toBe(3)
     expect(nextEpisode(eps, 3, 4, true)).toBeNull()
+  })
+
+  it('drops servers whose stream does not load', async () => {
+    const streams = [{ provider: 'a' }, { provider: 'a' }, { provider: 'b' }].map((s) => ({ ...s, url: s.provider, format: 'hls' as const, subtitles: [] }))
+    expect((await healthyStreams(streams, async (s) => s.provider === 'b')).map((s) => s.provider)).toEqual(['b'])
+    expect(await healthyStreams(streams, async () => false)).toEqual(streams)
+    expect((await healthyStreams(streams, async (s) => { if (s.provider === 'a') throw new Error('x'); return true })).map((s) => s.provider)).toEqual(['b'])
   })
 
   it('starts on the server used last time', () => {

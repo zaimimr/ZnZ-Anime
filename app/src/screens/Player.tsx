@@ -7,8 +7,8 @@ import { type LibraryEntry, libraryEntry } from '../library'
 import { keyAction } from '../nav/keys'
 import { useRouter } from '../nav/router'
 import { attachStream } from '../player/attach'
-import { activeSkip, countdownAt, hasSceneAfterOutro, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, preferredIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
-import { playableUrl } from '../player/proxy'
+import { activeSkip, countdownAt, hasSceneAfterOutro, healthyStreams, nearEnd, nextEpisode, qualityChoices, nextStreamIndex, preferredIndex, providers, qualityLabel, scrubStep, sections, shouldMarkWatched, shouldSaveResume, statusAfter } from '../player/logic'
+import { playableUrl, streamWorks } from '../player/proxy'
 import { loadThumbs, thumbAt, type ThumbCue } from '../player/thumbnails'
 import { clearResume, getResume, getServer, setResume, setServer } from '../player/resume'
 import { getSettings, saveSettings, type Settings } from '../settings'
@@ -109,6 +109,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const countdownActive = useRef(false)
   const startAt = useRef(getResume(id, ep))
   const triedAdapters = useRef<string[]>([])
+  const reloaded = useRef(false)
+  const [attempt, setAttempt] = useState(0)
 
   const load = useCallback(async (skipAdapters: string[]): Promise<void> => {
     const info = await details(id)
@@ -121,8 +123,9 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const wanted = getSettings().lang
     const result = await streamsWithFallback(found.adapter, found.show, ep, wanted)
     const { lang } = result
-    const streams = hosts.auth ? result.streams : result.streams.filter((s) => !s.headers)
-    if (!streams.length && result.streams.length) return setError('This episode needs your server. Add it in Settings > Server.')
+    const reachable = hosts.auth ? result.streams : result.streams.filter((s) => !s.headers)
+    if (!reachable.length && result.streams.length) return setError('This episode needs your server. Add it in Settings > Server.')
+    const streams = await healthyStreams(reachable, (s) => streamWorks(playableUrl(s.url, s.headers), s.format))
     if (!streams.length) return load(triedAdapters.current)
     if (lang !== wanted) setBadge(`${wanted.toUpperCase()} not available, playing ${lang.toUpperCase()}`)
     setIndex(preferredIndex(streams, getServer(id)))
@@ -154,15 +157,28 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     else load(triedAdapters.current).catch(() => setError('No source available.'))
   }, [loaded, index, load])
 
+  const recover = useCallback((blocked: boolean) => {
+    const el = video.current
+    if (blocked || reloaded.current || !el) return nextStream(blocked)
+    reloaded.current = true
+    startAt.current = el.currentTime || startAt.current
+    setBadge('Reconnecting')
+    setAttempt((a) => a + 1)
+  }, [nextStream])
+
+  useEffect(() => {
+    reloaded.current = false
+  }, [loaded, index])
+
   useEffect(() => {
     const stream = loaded?.streams[index]
     const el = video.current
     if (!stream || !el) return
     setBuffering(true)
-    const detach = attachStream(el, playableUrl(stream.url, stream.headers), stream.format, nextStream)
+    const detach = attachStream(el, playableUrl(stream.url, stream.headers), stream.format, recover)
     void el.play().catch(() => undefined)
     return detach
-  }, [loaded, index, nextStream])
+  }, [loaded, index, attempt, recover])
 
   const stream = loaded?.streams[index]
   const subs = useMemo(() => stream?.subtitles ?? [], [stream])
@@ -266,9 +282,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     try {
       const result = await streamsWithFallback(loaded.adapter, loaded.show, ep, lang)
       if (result.lang !== lang || !result.streams.length) return setBadge(`${lang.toUpperCase()} not available for this episode`)
+      const streams = await healthyStreams(result.streams, (s) => streamWorks(playableUrl(s.url, s.headers), s.format))
       updatePrefs({ lang })
-      setIndex(preferredIndex(result.streams, loaded.streams[index]?.provider ?? null))
-      setLoaded({ ...loaded, streams: result.streams, lang })
+      setIndex(preferredIndex(streams, loaded.streams[index]?.provider ?? null))
+      setLoaded({ ...loaded, streams, lang })
     } catch {
       setBadge(`Could not load ${lang.toUpperCase()}`)
     } finally {
@@ -513,7 +530,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         onLoadStart={() => setBuffering(true)}
         onWaiting={() => setBuffering(true)}
         onSeeking={() => setBuffering(true)}
-        onPlaying={() => { setBuffering(false); if (stream) setServer(id, stream.provider) }}
+        onPlaying={() => { setBuffering(false); reloaded.current = false; if (stream) setServer(id, stream.provider) }}
         onCanPlay={() => setBuffering(false)}
         onSeeked={onSeeked}
         onPlay={() => setPaused(false)}

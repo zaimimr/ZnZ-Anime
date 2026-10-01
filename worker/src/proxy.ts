@@ -73,34 +73,17 @@ function join(chunks: Uint8Array[]): Uint8Array {
   return bytes
 }
 
-const REFETCHES = 3
-
-async function completeSegment(target: string, headers: Headers, reader: ReadableStreamDefaultReader<Uint8Array>, first: Uint8Array, start: number): Promise<Uint8Array> {
-  let best = (await readAll(reader, first)).subarray(start)
-  for (let i = 0; i < REFETCHES && best.length % TS_PACKET !== 0; i++) {
-    const retry = await fetch(target, { headers })
-    if (retry.status !== 200 || !retry.body) break
-    const bytes = await readAll(retry.body.getReader(), new Uint8Array())
-    const offset = tsStart(bytes)
-    if (offset >= 0 && bytes.length - offset > best.length) best = bytes.subarray(offset)
-  }
-  return best
-}
-
-function replay(reader: ReadableStreamDefaultReader<Uint8Array>, first: Uint8Array): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    start(controller) {
-      if (first.length) controller.enqueue(first)
-    },
-    async pull(controller) {
-      const { done, value } = await reader.read()
-      if (done) controller.close()
-      else controller.enqueue(value)
-    },
-    cancel(reason) {
-      return reader.cancel(reason)
-    },
-  })
+function pass(reader: ReadableStreamDefaultReader<Uint8Array>, body: ReadableStream<Uint8Array>, head: Uint8Array): ReadableStream<Uint8Array> {
+  const Identity = (globalThis as { IdentityTransformStream?: typeof TransformStream }).IdentityTransformStream ?? TransformStream
+  const { readable, writable } = new Identity<Uint8Array, Uint8Array>()
+  const writer = writable.getWriter()
+  void (async () => {
+    if (head.length) await writer.write(head)
+    writer.releaseLock()
+    reader.releaseLock()
+    await body.pipeTo(writable)
+  })().catch(() => undefined)
+  return readable
 }
 
 export async function proxy(req: Request): Promise<Response> {
@@ -118,8 +101,10 @@ export async function proxy(req: Request): Promise<Response> {
   }
   const range = req.headers.get('range')
   if (range) headers.set('range', range)
-  const upstream = await fetch(target, { headers })
-  if (/text\/html/i.test(upstream.headers.get('content-type') ?? '')) return json({ error: 'upstream returned html', status: upstream.status }, 502)
+  const isHtml = (r: Response) => /text\/html/i.test(r.headers.get('content-type') ?? '')
+  let upstream = await fetch(target, { headers })
+  if (isHtml(upstream)) upstream = await fetch(target, { headers })
+  if (isHtml(upstream)) return json({ error: 'upstream returned html', status: upstream.status }, 502)
   const outHeaders = new Headers({ ...cors, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' })
   for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
     const value = upstream.headers.get(name)
@@ -131,11 +116,11 @@ export async function proxy(req: Request): Promise<Response> {
   const isPlaylist = new TextDecoder().decode(first.slice(0, 32)).trimStart().startsWith('#EXTM3U')
   if (!isPlaylist) {
     const start = upstream.status === 200 ? tsStart(first) : -1
-    if (start < 0) return new Response(replay(reader, first), { status: upstream.status, headers: outHeaders })
-    const body = await completeSegment(target, headers, reader, first, start)
+    if (start < 0) return new Response(pass(reader, upstream.body, first), { status: upstream.status, headers: outHeaders })
     outHeaders.set('content-type', 'video/mp2t')
-    outHeaders.set('content-length', String(body.length))
-    return new Response(body, { status: upstream.status, headers: outHeaders })
+    const length = Number(outHeaders.get('content-length'))
+    if (start > 0 && length) outHeaders.set('content-length', String(length - start))
+    return new Response(pass(reader, upstream.body, first.subarray(start)), { status: upstream.status, headers: outHeaders })
   }
   const text = new TextDecoder().decode(await readAll(reader, first))
   outHeaders.delete('content-length')
