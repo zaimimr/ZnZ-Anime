@@ -6,7 +6,7 @@ describe('on-screen keyboard', () => {
     const keys = keyboardRows.flat()
     expect(keys).toContain('a')
     expect(keys).toContain('0')
-    expect(keys).toEqual(expect.arrayContaining(['space', 'del', 'clear']))
+    expect(keys).toEqual(expect.arrayContaining(['space', 'del', 'clear', "'", '.', '!', '-', ':']))
   })
 
   it('edits text', () => {

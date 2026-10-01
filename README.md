@@ -18,7 +18,7 @@
 - Keep track with AniList, MyAnimeList, both or neither. Without an account your list is saved on the TV
 - New episodes row, a weekly airing schedule and filler badges
 
-Tested on a Samsung The Frame (Tizen 6+) at 1920x1080.
+Tested on a Samsung The Frame (Tizen 6.5+) at 1920x1080.
 
 | | |
 |---|---|
@@ -57,6 +57,8 @@ The app needs a small server to play videos (streaming sites only answer request
 
 Videos work now. For logins, also do the optional steps below.
 
+**Lock the video proxy (recommended):** run `npx wrangler secret put PROXY_SECRET` and paste a long random string, for example from `openssl rand -hex 32`. Without it, anyone who finds your server address can use it to fetch any file.
+
 **AniList login (optional):** create a client at https://anilist.co/settings/developer with redirect URL `https://znz-auth.<you>.workers.dev/callback/anilist`, then `npx wrangler secret put ANILIST_CLIENT_ID`.
 
 **MyAnimeList login (optional):** create an app at https://myanimelist.net/apiconfig (type **web**) with redirect URL `https://znz-auth.<you>.workers.dev/callback/mal`, then `npx wrangler secret put MAL_CLIENT_ID` and `npx wrangler secret put MAL_CLIENT_SECRET`.
@@ -83,7 +85,7 @@ Samsung only lets you install your own apps with a certificate made for your TV,
 
 3. Open ZnZ Anime from **Apps**, go to **Settings > Server** and type your server address (without `https://`).
 
-To update, download the new release and repeat step 4. Your list, settings and server are kept.
+To update, download the new release, empty the old folder first so the old `.wgt` is not packed into the new one (`rm -rf ZnZAnime && mkdir ZnZAnime && unzip -q ZnZAnime-<version>.zip -d ZnZAnime`), then run step 4.2 again. Your list, settings and server are kept.
 
 ## Using the app
 

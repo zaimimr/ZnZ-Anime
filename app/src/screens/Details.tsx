@@ -1,9 +1,9 @@
 import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { type Details, details } from '../anilist/api'
 import { readHistory } from '../history'
 import { type LibraryEntry, libraryEntry } from '../library'
-import { useRouter } from '../nav/router'
+import { useOnResume, useRouter } from '../nav/router'
 import { statusLabels, statusOrder } from '../list'
 import { nextEpisode, playTarget } from '../player/logic'
 import { getResume } from '../player/resume'
@@ -18,19 +18,26 @@ import { PosterRow } from '../ui/PosterRow'
 
 type SourceState = { state: 'loading' } | { state: 'none' } | { state: 'ready'; source: string; episodes: Episode[] }
 
+const SPAN = 30
+const EPISODE_WIDTH = 352
+
 function EpisodeRow({ id, episodes, watched, target }: { id: number; episodes: Episode[]; watched: number; target: number }) {
   const { push } = useRouter()
   const { ref, focusKey } = useFocusable<unknown, HTMLElement>({ focusKey: 'episodes', saveLastFocusedChild: true, preferredChildFocusKey: `ep-${target}` })
+  const [center, setCenter] = useState(() => Math.max(0, episodes.findIndex((e) => e.number === target)))
+  const start = Math.max(0, center - SPAN)
+  const shown = useMemo(() => episodes.slice(start, center + SPAN + 1), [episodes, start, center])
   return (
     <FocusContext.Provider value={focusKey}>
       <section ref={ref} className="row">
         <h2>Episodes</h2>
         <div className="row-track">
-          {episodes.map((ep) => {
+          {start > 0 && <div style={{ flex: `0 0 ${start * EPISODE_WIDTH - 24}px` }} />}
+          {shown.map((ep, i) => {
             const position = getResume(id, ep.number)
             const done = ep.number <= watched
             return (
-              <Focusable key={ep.number} focusKey={`ep-${ep.number}`} className={`episode ${done ? 'watched' : ''}`} onEnter={() => push({ name: 'player', id, ep: ep.number })}>
+              <Focusable key={ep.number} focusKey={`ep-${ep.number}`} className={`episode ${done ? 'watched' : ''}`} onFocus={() => setCenter(start + i)} onEnter={() => push({ name: 'player', id, ep: ep.number })}>
                 <div className="thumb">
                   {ep.thumbnail ? <img src={ep.thumbnail} alt="" loading="lazy" /> : <div className="blank">{ep.number}</div>}
                   {done && <div className="check"><Icon name="check" size={24} /></div>}
@@ -83,6 +90,10 @@ export function DetailsScreen({ id }: { id: number }) {
   const [notice, setNotice] = useState('')
   const { setBackHandler } = useRouter()
 
+  useOnResume(() => {
+    details(id).then(libraryEntry).then(setEntry).catch(() => undefined)
+  })
+
   useEffect(() => {
     if (!menu) return
     setBackHandler(() => {
@@ -97,7 +108,7 @@ export function DetailsScreen({ id }: { id: number }) {
     setSource({ state: 'loading' })
     resolveFirst({ anilistId: media.id, titles: media.titles }).then((r) =>
       setSource(r ? { state: 'ready', source: r.adapter.id, episodes: r.episodes } : { state: 'none' }),
-    )
+    ).catch(() => setSource({ state: 'none' }))
   }, [])
 
   useEffect(() => {
@@ -139,8 +150,8 @@ export function DetailsScreen({ id }: { id: number }) {
         setNotice('Removed from your list')
       } else {
         const progress = status === 'completed' ? (info.episodes ?? entry.progress) : entry.progress
-        await saveEverywhere({ anilistId: info.id, malId: info.idMal, status, progress, score: entry.score })
-        setEntry({ ...entry, status, progress })
+        const listId = await saveEverywhere({ anilistId: info.id, malId: info.idMal, status, progress, score: entry.score })
+        setEntry({ ...entry, status, progress, listId: listId ?? entry.listId })
         setNotice(`Moved to ${statusLabels[status]}`)
       }
     } catch (e) {
@@ -177,7 +188,7 @@ export function DetailsScreen({ id }: { id: number }) {
   const relations = new Map(info.related.map((r) => [r.id, r.relation]))
 
   return (
-    <div className="screen" style={{ overflowY: 'auto', background: info.banner ? `linear-gradient(90deg, var(--bg) 45%, transparent), linear-gradient(transparent 160px, var(--bg) 404px), url(${info.banner}) right top / 100% auto no-repeat` : undefined }}>
+    <div className="screen" style={{ overflowY: 'auto', background: info.banner ? `linear-gradient(90deg, var(--bg) 45%, transparent), linear-gradient(transparent 160px, var(--bg) 404px), url("${info.banner}") right top / 100% auto no-repeat` : undefined }}>
       <div style={{ maxWidth: 1100, marginBottom: 40 }}>
         <h1 style={{ margin: '0 0 12px', fontSize: 64 }}>{info.title}</h1>
         <p className="muted">
@@ -201,9 +212,10 @@ export function DetailsScreen({ id }: { id: number }) {
         {notice && <p className="notice">{notice}</p>}
       </div>
       {source.state === 'loading' && <p className="muted">Finding episodes...</p>}
-      {source.state === 'none' && (
+      {source.state === 'none' && info.status === 'NOT_YET_RELEASED' && <p className="muted">Not aired yet</p>}
+      {source.state === 'none' && info.status !== 'NOT_YET_RELEASED' && (
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-          <p>{info.status === 'NOT_YET_RELEASED' ? 'This show has not aired yet.' : 'No streams found for this show right now.'}</p>
+          <p>No streams found for this show right now.</p>
           <Focusable className="btn" onEnter={() => loadSource(info)}>Retry</Focusable>
         </div>
       )}

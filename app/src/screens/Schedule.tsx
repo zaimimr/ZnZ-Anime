@@ -3,24 +3,26 @@ import { type ScheduleItem, schedule } from '../anilist/api'
 import { fetchLibrary } from '../library'
 import { clock, dayName } from '../list'
 import type { ListItem } from '../types'
+import { Focusable } from '../ui/Focusable'
 import { PosterRow } from '../ui/PosterRow'
 
 export function Schedule() {
   const [items, setItems] = useState<ScheduleItem[] | null>(null)
   const [list, setList] = useState<ListItem[]>([])
   const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     const from = new Date().setHours(0, 0, 0, 0)
     fetchLibrary()
       .then((l) => {
         setList(l)
-        const ids = l.filter((i) => i.entry.status === 'watching' || i.entry.status === 'planning').map((i) => i.card.id)
+        const ids = l.filter((i) => i.entry.status === 'watching' || i.entry.status === 'rewatching' || i.entry.status === 'planning').map((i) => i.card.id)
         return schedule(ids, from, from + 7 * 86_400_000)
       })
       .then(setItems)
       .catch(() => setFailed(true))
-  }, [])
+  }, [attempt])
 
   const days = new Map<string, ScheduleItem[]>()
   for (const item of items ?? []) {
@@ -35,7 +37,15 @@ export function Schedule() {
     <div className="screen" style={{ overflowY: 'auto' }}>
       <h1 style={{ margin: '0 0 8px' }}>This week</h1>
       <p className="muted" style={{ margin: '0 0 32px' }}>New episodes of shows you are watching or planning.</p>
-      {failed && <p className="muted">Could not load the schedule. Check the connection and open it again.</p>}
+      {failed && (
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          <p className="muted">Could not load the schedule. Check the connection and try again.</p>
+          <Focusable className="btn" autoFocus onEnter={() => {
+            setFailed(false)
+            setAttempt((a) => a + 1)
+          }}>Retry</Focusable>
+        </div>
+      )}
       {!items && !failed && <p className="muted">Loading the schedule...</p>}
       {items && !items.length && <p className="muted">None of your shows air in the next 7 days.</p>}
       {[...days].map(([day, row], n) => {

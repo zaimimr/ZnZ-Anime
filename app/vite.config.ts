@@ -6,7 +6,7 @@ export default defineConfig({
   base: './',
   define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version) },
   plugins: [react()],
-  build: { target: 'es2020' },
+  build: { target: 'chrome85', cssTarget: 'chrome85' },
   server: {
     proxy: {
       '/x/miruro': { target: 'https://www.miruro.to', changeOrigin: true, rewrite: (p) => p.replace(/^\/x\/miruro/, '') },

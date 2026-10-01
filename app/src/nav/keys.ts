@@ -17,7 +17,7 @@ declare global {
 }
 
 export function registerTvKeys(): void {
-  for (const name of ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaFastForward', 'MediaRewind', 'MediaStop']) {
+  for (const name of ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaFastForward', 'MediaRewind', 'MediaStop', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']) {
     try {
       window.tizen?.tvinputdevice.registerKey(name)
     } catch {

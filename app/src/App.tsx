@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
-import { RouterProvider, useRouter } from './nav/router'
+import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { lazy, type ReactNode, Suspense, useEffect, useState } from 'react'
+import { ActiveContext, type Route, RouterProvider, useRouter } from './nav/router'
 import { isOnboarded } from './onboarding'
 import { DetailsScreen } from './screens/Details'
 import { Home } from './screens/Home'
 import { MyList } from './screens/MyList'
 import { Pair, providerNames } from './screens/Pair'
-import { PlayerScreen } from './screens/Player'
 import { Schedule } from './screens/Schedule'
 import { Search } from './screens/Search'
 import { SettingsScreen } from './screens/Settings'
@@ -13,8 +13,41 @@ import { Welcome } from './screens/Welcome'
 import { flushQueue } from './sync/writer'
 import type { Provider } from './types'
 
+const PlayerScreen = lazy(() => import('./screens/Player').then((m) => ({ default: m.PlayerScreen })))
+
+const keepAlive = new Set<Route['name']>(['home', 'search', 'list', 'schedule', 'details'])
+
+const routeKey = (r: Route) => [r.name, 'id' in r ? r.id : '', 'ep' in r ? r.ep : '', 'provider' in r ? r.provider : ''].join('-')
+
+function Layer({ index, active, children }: { index: number; active: boolean; children: ReactNode }) {
+  const { ref, focusKey } = useFocusable<unknown, HTMLDivElement>({ focusKey: `layer-${index}`, focusable: active, saveLastFocusedChild: true, isFocusBoundary: true })
+  useEffect(() => {
+    if (active) setFocus(focusKey)
+  }, [active, focusKey])
+  return (
+    <ActiveContext.Provider value={active}>
+      <FocusContext.Provider value={focusKey}>
+        <div ref={ref} className="layer" hidden={!active}>
+          <Suspense fallback={null}>{children}</Suspense>
+        </div>
+      </FocusContext.Provider>
+    </ActiveContext.Provider>
+  )
+}
+
 function Screens() {
-  const { route } = useRouter()
+  const { stack } = useRouter()
+  const top = stack.length - 1
+  return stack.map((route, i) =>
+    i === top || (keepAlive.has(route.name) && !stack.slice(i + 1).some((r) => r.name === route.name)) ? (
+      <Layer key={`${i}-${routeKey(route)}`} index={i} active={i === top}>
+        <Screen route={route} />
+      </Layer>
+    ) : null,
+  )
+}
+
+function Screen({ route }: { route: Route }) {
   switch (route.name) {
     case 'welcome':
       return <Welcome />
@@ -68,6 +101,15 @@ export default function App() {
     const timer = setTimeout(() => setSplash(false), 2000)
     return () => clearTimeout(timer)
   }, [])
+  useEffect(() => {
+    if (!splash) return
+    const block = (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('keydown', block, true)
+    return () => window.removeEventListener('keydown', block, true)
+  }, [splash])
   return (
     <RouterProvider initial={isOnboarded() ? { name: 'home' } : { name: 'welcome' }}>
       <Screens />

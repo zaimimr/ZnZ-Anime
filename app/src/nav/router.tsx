@@ -1,5 +1,6 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Provider } from '../types'
+import { ExitConfirm } from '../ui/ExitConfirm'
 import { keyAction } from './keys'
 
 export type Route =
@@ -15,6 +16,7 @@ export type Route =
 
 interface RouterValue {
   route: Route
+  stack: Route[]
   push(route: Route): void
   replace(route: Route): void
   reset(route: Route): void
@@ -24,19 +26,40 @@ interface RouterValue {
 
 const RouterContext = createContext<RouterValue | null>(null)
 
+export const ActiveContext = createContext(true)
+
+export function useActive(): boolean {
+  return useContext(ActiveContext)
+}
+
+export function useOnResume(fn: () => void): void {
+  const active = useActive()
+  const seen = useRef(active)
+  const latest = useRef(fn)
+  useLayoutEffect(() => {
+    latest.current = fn
+  })
+  useEffect(() => {
+    if (active && !seen.current) latest.current()
+    seen.current = active
+  }, [active])
+}
+
 export function RouterProvider({ initial, children }: { initial: Route; children: ReactNode }) {
   const [stack, setStack] = useState<Route[]>([initial])
+  const [exiting, setExiting] = useState(false)
+  const depth = useRef(1)
+  useLayoutEffect(() => {
+    depth.current = stack.length
+  }, [stack])
   const backHandler = useRef<(() => boolean) | null>(null)
   const push = useCallback((route: Route) => setStack((s) => [...s, route]), [])
   const replace = useCallback((route: Route) => setStack((s) => [...s.slice(0, -1), route]), [])
   const reset = useCallback((route: Route) => setStack([route]), [])
   const back = useCallback(() => {
     if (backHandler.current?.()) return
-    setStack((s) => {
-      if (s.length > 1) return s.slice(0, -1)
-      window.tizen?.application.getCurrentApplication().hide()
-      return s
-    })
+    if (depth.current > 1) setStack((s) => s.slice(0, -1))
+    else setExiting((e) => !e)
   }, [])
   const setBackHandler = useCallback((fn: (() => boolean) | null) => { backHandler.current = fn }, [])
 
@@ -51,8 +74,13 @@ export function RouterProvider({ initial, children }: { initial: Route; children
     return () => window.removeEventListener('keydown', onKey)
   }, [back])
 
-  const value = useMemo(() => ({ route: stack[stack.length - 1], push, replace, reset, back, setBackHandler }), [stack, push, replace, reset, back, setBackHandler])
-  return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>
+  const value = useMemo(() => ({ route: stack[stack.length - 1], stack, push, replace, reset, back, setBackHandler }), [stack, push, replace, reset, back, setBackHandler])
+  return (
+    <RouterContext.Provider value={value}>
+      {children}
+      {exiting && <ExitConfirm onStay={() => setExiting(false)} />}
+    </RouterContext.Provider>
+  )
 }
 
 export function useRouter(): RouterValue {

@@ -53,4 +53,29 @@ describe('DetailsScreen', () => {
     expect(await screen.findByText('No streams found for this show right now.')).toBeTruthy()
     expect(screen.queryByText(/Play episode/)).toBeNull()
   })
+
+  it('offers Retry when every source fails', async () => {
+    vi.mocked(resolveFirst).mockRejectedValueOnce(new Error('down'))
+    vi.mocked(details).mockResolvedValueOnce(info)
+    render(<RouterProvider initial={{ name: 'details', id: 1 }}><DetailsScreen id={1} /></RouterProvider>)
+    expect(await screen.findByText('No streams found for this show right now.')).toBeTruthy()
+    expect(screen.getByText('Retry')).toBeTruthy()
+  })
+
+  it('says not aired yet without Retry', async () => {
+    vi.mocked(resolveFirst).mockResolvedValueOnce(null)
+    vi.mocked(details).mockResolvedValueOnce({ ...info, status: 'NOT_YET_RELEASED' })
+    render(<RouterProvider initial={{ name: 'details', id: 1 }}><DetailsScreen id={1} /></RouterProvider>)
+    expect((await screen.findAllByText('Not aired yet')).length).toBe(2)
+    expect(screen.queryByText('Retry')).toBeNull()
+  })
+
+  it('renders only a window of a long episode list', async () => {
+    vi.mocked(resolveFirst).mockResolvedValueOnce({ adapter: { id: 'test' }, show: { source: 'test', id: '1' }, episodes: Array.from({ length: 1184 }, (_, i) => ({ number: i + 1 })) } as never)
+    vi.mocked(details).mockResolvedValueOnce({ ...info, episodes: 1184 })
+    const { container } = render(<RouterProvider initial={{ name: 'details', id: 1 }}><DetailsScreen id={1} /></RouterProvider>)
+    expect(await screen.findByText(/Play episode 1/)).toBeTruthy()
+    await screen.findByText('E1')
+    expect(container.querySelectorAll('.episode').length).toBeLessThanOrEqual(61)
+  })
 })

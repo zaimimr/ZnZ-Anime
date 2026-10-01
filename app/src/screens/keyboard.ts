@@ -4,7 +4,8 @@ export const keyboardRows: string[][] = [
   ['o', 'p', 'q', 'r', 's', 't', 'u'],
   ['v', 'w', 'x', 'y', 'z', '-', ':'],
   ['1', '2', '3', '4', '5', '6', '7'],
-  ['8', '9', '0', 'space', 'del', 'clear'],
+  ['8', '9', '0', "'", '.', '!'],
+  ['space', 'del', 'clear'],
 ]
 
 const MAX = 60

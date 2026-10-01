@@ -3,7 +3,7 @@ import { recommendations, season } from '../anilist/api'
 import { continueWatching, readHistory, unlistedItems } from '../history'
 import { fetchLibrary } from '../library'
 import { newEpisodes, progressLabel } from '../list'
-import { useRouter } from '../nav/router'
+import { useOnResume, useRouter } from '../nav/router'
 import { type TrendWindow, topTrending } from '../trending'
 import type { Card, ListItem } from '../types'
 import { Focusable } from '../ui/Focusable'
@@ -14,7 +14,7 @@ const windowLabels: Record<TrendWindow, string> = { day: 'Day', week: 'Week', mo
 export function Home() {
   const { push } = useRouter()
   const [list, setList] = useState<ListItem[]>([])
-  const [history] = useState(readHistory)
+  const [history, setHistory] = useState(readHistory)
   const [unlisted, setUnlisted] = useState<ListItem[]>([])
   const [airing, setAiring] = useState<Card[]>([])
   const [trendWindow, setTrendWindow] = useState<TrendWindow>('day')
@@ -23,6 +23,8 @@ export function Home() {
   const [because, setBecause] = useState<{ title: string; cards: Card[] } | null>(null)
 
   const fail = () => setOffline(true)
+
+  useOnResume(() => setHistory(readHistory()))
 
   useEffect(() => {
     fetchLibrary()
@@ -43,7 +45,7 @@ export function Home() {
   const fresh = newEpisodes(list)
   const byId = new Map([...unlisted, ...list].map((i) => [i.card.id, i]))
   const played = new Map(history.map((h) => [h.id, h]))
-  const seed = [...list].filter((i) => i.entry.status === 'watching' || i.entry.status === 'completed').sort((a, b) => b.updatedAt - a.updatedAt)[0]
+  const seed = [...list].filter((i) => i.entry.status === 'watching' || i.entry.status === 'rewatching' || i.entry.status === 'completed').sort((a, b) => b.updatedAt - a.updatedAt)[0]
   const seedId = seed?.card.id
   const seedTitle = seed?.card.title ?? ''
 
