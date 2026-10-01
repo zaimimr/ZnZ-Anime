@@ -4,7 +4,7 @@ import type { Env } from '../src/pair'
 import { memoryKV } from './kv'
 
 const origin = 'https://auth.test'
-let env: Env
+let env: Env & { PAIRS: ReturnType<typeof memoryKV> }
 
 function call(path: string, init?: RequestInit) {
   return worker.fetch(new Request(origin + path, init), env)
@@ -14,6 +14,11 @@ beforeEach(() => {
   env = { PAIRS: memoryKV(), ANILIST_CLIENT_ID: 'al-id', MAL_CLIENT_ID: 'mal-id', MAL_CLIENT_SECRET: 'mal-secret' }
 })
 afterEach(() => vi.unstubAllGlobals())
+
+async function continueUrl(res: Response) {
+  const href = (await res.text()).match(/href="([^"]+)"/)![1].replace(/&#38;/g, '&')
+  return new URL(href)
+}
 
 async function startPair(provider: string) {
   const res = await call('/pair', { method: 'POST', body: JSON.stringify({ provider }) })
@@ -35,20 +40,28 @@ describe('pairing', () => {
     expect(res.status).toBe(400)
   })
 
-  it('redirects AniList login to the implicit grant and remembers the pair in a cookie', async () => {
+  it('asks before sending AniList login to the implicit grant and remembers the pair in a cookie', async () => {
     const { code } = await startPair('anilist')
     const res = await call(`/login/${code}`)
-    expect(res.status).toBe(302)
-    const url = new URL(res.headers.get('location')!)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/html')
+    const set = res.headers.get('set-cookie')
+    const html = await res.clone().text()
+    expect(html).toContain(code)
+    expect(html).toContain('AniList')
+    expect(html).toContain('own TV')
+    const url = await continueUrl(res)
     expect(url.origin + url.pathname).toBe('https://anilist.co/api/v2/oauth/authorize')
     expect(url.searchParams.get('client_id')).toBe('al-id')
     expect(url.searchParams.get('response_type')).toBe('token')
-    expect(res.headers.get('set-cookie')).toMatch(new RegExp(`znz_pair=${code};.*HttpOnly`))
+    expect(set).toMatch(new RegExp(`znz_pair=${code};.*HttpOnly`))
   })
 
-  it('redirects login to MAL with a plain PKCE challenge', async () => {
+  it('sends login to MAL with a plain PKCE challenge after confirming the code', async () => {
     const { code } = await startPair('mal')
-    const url = new URL((await call(`/login/${code}`)).headers.get('location')!)
+    const res = await call(`/login/${code}`)
+    const url = await continueUrl(res.clone())
+    expect(await res.text()).toContain('MyAnimeList')
     expect(url.origin + url.pathname).toBe('https://myanimelist.net/v1/oauth2/authorize')
     expect(url.searchParams.get('code_challenge_method')).toBe('plain')
     expect(url.searchParams.get('code_challenge')!.length).toBeGreaterThanOrEqual(43)
@@ -62,7 +75,7 @@ describe('pairing', () => {
     expect(html).toContain('/callback/anilist/token')
   })
 
-  it('stores the AniList token for the paired TV exactly once and never calls AniList', async () => {
+  it('stores the AniList token for the paired TV, keeps it for a short retry window and never calls AniList', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const { code } = await startPair('anilist')
@@ -73,7 +86,29 @@ describe('pairing', () => {
     const body = (await first.json()) as { tokens: { accessToken: string; expiresAt: number } }
     expect(body.tokens.accessToken).toBe('AT')
     expect(body.tokens.expiresAt).toBeGreaterThan(Date.now() + 1e9)
-    expect((await call(`/pair/${code}`)).status).toBe(404)
+    expect(env.PAIRS.ttls.get(`pair:${code}`)).toBe(60)
+    const retry = (await (await call(`/pair/${code}`)).json()) as { tokens: { accessToken: string } }
+    expect(retry.tokens.accessToken).toBe('AT')
+    expect(env.PAIRS.ttls.get(`pair:${code}`)).toBe(60)
+  })
+
+  it('rate limits pair creation and polling per client IP', async () => {
+    const keys: string[] = []
+    const deny = { limit: async ({ key }: { key: string }) => (keys.push(key), { success: false }) }
+    env = { ...env, PAIR_LIMIT: deny, POLL_LIMIT: deny }
+    const headers = { 'cf-connecting-ip': '203.0.113.9' }
+    expect((await call('/pair', { method: 'POST', headers, body: JSON.stringify({ provider: 'anilist' }) })).status).toBe(429)
+    const res = await call('/pair/ABCDEF', { headers })
+    expect(res.status).toBe(429)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+    expect(keys).toEqual(['203.0.113.9', '203.0.113.9'])
+  })
+
+  it('returns 502 with CORS when a handler throws', async () => {
+    env.PAIRS.store.set('pair:BROKEN', '{not json')
+    const res = await call('/pair/BROKEN')
+    expect(res.status).toBe(502)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
   })
 
   it('rejects an AniList token without a pair cookie or for a MAL pair', async () => {
@@ -87,7 +122,7 @@ describe('pairing', () => {
     const fetchMock = vi.fn(async () => Response.json({ access_token: 'MT', refresh_token: 'MR', expires_in: 2678400 }))
     vi.stubGlobal('fetch', fetchMock)
     const { code } = await startPair('mal')
-    const challenge = new URL((await call(`/login/${code}`)).headers.get('location')!).searchParams.get('code_challenge')
+    const challenge = (await continueUrl(await call(`/login/${code}`))).searchParams.get('code_challenge')
     await call(`/callback/mal?code=c&state=${code}`)
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://myanimelist.net/v1/oauth2/token')

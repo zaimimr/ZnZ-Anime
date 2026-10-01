@@ -2,5 +2,9 @@
   "name": "znz-auth",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
-  "kv_namespaces": [{ "binding": "PAIRS", "id": "8c555bb5115c4c5a8a13642a8883dc3d" }]
+  "kv_namespaces": [{ "binding": "PAIRS", "id": "8c555bb5115c4c5a8a13642a8883dc3d" }],
+  "ratelimits": [
+    { "name": "PAIR_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
+    { "name": "POLL_LIMIT", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+  ]
 }

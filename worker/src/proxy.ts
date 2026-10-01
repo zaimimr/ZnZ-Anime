@@ -1,27 +1,80 @@
-import { b64urlDecode, b64urlEncode } from './b64'
-import { cors, json } from './pair'
+import { b64urlEncode, b64urlDecode, b64urlToBytes, bytesToB64url } from './b64'
+import { cors, type Env, json } from './pair'
 
-function proxied(url: string, proxyBase: string, referer?: string): string {
-  const r = referer ? `&r=${b64urlEncode(referer)}` : ''
-  return `${proxyBase}?u=${b64urlEncode(url)}${r}`
+let cachedKey: { secret: string; key: Promise<CryptoKey> } | undefined
+
+function hmacKey(secret: string): Promise<CryptoKey> {
+  if (cachedKey?.secret !== secret) {
+    const key = crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
+    cachedKey = { secret, key }
+  }
+  return cachedKey.key
 }
 
-export function rewritePlaylist(body: string, playlistUrl: string, proxyBase: string, referer?: string): string {
-  const absolute = (value: string) => proxied(new URL(value, playlistUrl).toString(), proxyBase, referer)
-  return body
-    .split('\n')
-    .map((raw) => {
+const signed = (u: string, r?: string | null) => new TextEncoder().encode(`${u}|${r ?? ''}`)
+
+async function verify(secret: string, u: string, r: string | null, s: string): Promise<boolean> {
+  try {
+    return await crypto.subtle.verify('HMAC', await hmacKey(secret), b64urlToBytes(s), signed(u, r))
+  } catch {
+    return false
+  }
+}
+
+const foreignScheme = (value: string) => /^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:/i.test(value)
+
+async function linker(baseUrl: string, proxyBase: string, referer?: string, secret?: string) {
+  const r = referer ? b64urlEncode(referer) : undefined
+  const key = secret ? await hmacKey(secret) : undefined
+  return async (value: string) => {
+    if (foreignScheme(value)) return value
+    const u = b64urlEncode(new URL(value, baseUrl).toString())
+    const s = key ? `&s=${bytesToB64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, signed(u, r))))}` : ''
+    return `${proxyBase}?u=${u}${r ? `&r=${r}` : ''}${s}`
+  }
+}
+
+export async function rewritePlaylist(body: string, playlistUrl: string, proxyBase: string, referer?: string, secret?: string): Promise<string> {
+  const absolute = await linker(playlistUrl, proxyBase, referer, secret)
+  const tag = async (line: string) => {
+    const uris = await Promise.all(Array.from(line.matchAll(/URI="([^"]+)"/g), (m) => absolute(m[1])))
+    let i = 0
+    return line.replace(/URI="([^"]+)"/g, () => `URI="${uris[i++]}"`)
+  }
+  const lines = await Promise.all(
+    body.split('\n').map((raw) => {
       const line = raw.trim()
       if (!line) return raw
-      if (line.startsWith('#')) return line.replace(/URI="([^"]+)"/g, (_, uri: string) => `URI="${absolute(uri)}"`)
-      return absolute(line)
-    })
-    .join('\n')
+      return line.startsWith('#') ? tag(line) : absolute(line)
+    }),
+  )
+  return lines.join('\n')
+}
+
+const cueUrl = (line: string) => /^\S+$/.test(line) && (/^(https?:\/\/|\.{0,2}\/)/i.test(line) || /\.(jpe?g|png|webp|gif|bmp|avif)([?#]|$)/i.test(line))
+
+export async function rewriteVtt(body: string, vttUrl: string, proxyBase: string, referer?: string, secret?: string): Promise<string> {
+  const absolute = await linker(vttUrl, proxyBase, referer, secret)
+  let inCue = false
+  const lines = await Promise.all(
+    body.split('\n').map((raw) => {
+      const line = raw.trim()
+      if (!line) inCue = false
+      else if (line.includes('-->')) inCue = true
+      else if (inCue && cueUrl(line)) {
+        const [path, ...fragment] = line.split('#')
+        return absolute(path).then((url) => [url, ...fragment].join('#'))
+      }
+      return raw
+    }),
+  )
+  return lines.join('\n')
 }
 
 const BROWSER_UA = 'Mozilla/5.0 (SMART-TV; Linux; Tizen 9.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
 
 const TS_PACKET = 188
+const IMAGE_MAGIC = [[0x89, 0x50, 0x4e, 0x47], [0xff, 0xd8, 0xff], [0x47, 0x49, 0x46, 0x38], [0x42, 0x4d], [0x52, 0x49, 0x46, 0x46]]
 const SNIFF_BYTES = 2048
 
 async function readHead(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<Uint8Array> {
@@ -41,6 +94,8 @@ async function readHead(reader: ReadableStreamDefaultReader<Uint8Array>): Promis
   }
   return head
 }
+
+const isImage = (bytes: Uint8Array) => IMAGE_MAGIC.some((magic) => magic.every((byte, i) => bytes[i] === byte))
 
 export function tsStart(bytes: Uint8Array): number {
   for (let i = 0; i + TS_PACKET * 2 < bytes.length; i++) {
@@ -86,11 +141,14 @@ function pass(reader: ReadableStreamDefaultReader<Uint8Array>, body: ReadableStr
   return readable
 }
 
-export async function proxy(req: Request): Promise<Response> {
+export async function proxy(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url)
   const encodedTarget = url.searchParams.get('u')
   const encodedReferer = url.searchParams.get('r')
+  const signature = url.searchParams.get('s')
   if (!encodedTarget) return json({ error: 'missing u' }, 400)
+  const trusted = !env.PROXY_SECRET || (!!signature && (await verify(env.PROXY_SECRET, encodedTarget, encodedReferer, signature)))
+  if (signature && !trusted) return json({ error: 'bad signature' }, 403)
   const target = b64urlDecode(encodedTarget)
   if (!/^https?:\/\//.test(target)) return json({ error: 'bad target' }, 400)
   const referer = encodedReferer ? b64urlDecode(encodedReferer) : undefined
@@ -103,19 +161,37 @@ export async function proxy(req: Request): Promise<Response> {
   if (range) headers.set('range', range)
   const isHtml = (r: Response) => /text\/html/i.test(r.headers.get('content-type') ?? '')
   let upstream = await fetch(target, { headers })
-  if (isHtml(upstream)) upstream = await fetch(target, { headers })
-  if (isHtml(upstream)) return json({ error: 'upstream returned html', status: upstream.status }, 502)
+  if (isHtml(upstream)) {
+    await upstream.body?.cancel()
+    upstream = await fetch(target, { headers })
+  }
+  if (isHtml(upstream)) {
+    await upstream.body?.cancel()
+    return json({ error: 'upstream returned html', status: upstream.status }, 502)
+  }
   const outHeaders = new Headers({ ...cors, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' })
   for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
     const value = upstream.headers.get(name)
     if (value) outHeaders.set(name, value)
   }
-  if (!upstream.ok || !upstream.body) return new Response(upstream.body, { status: upstream.status, headers: outHeaders })
+  if (!upstream.ok || !upstream.body) {
+    if (trusted) return new Response(upstream.body, { status: upstream.status, headers: outHeaders })
+    await upstream.body?.cancel()
+    return new Response(null, { status: upstream.status, headers: cors })
+  }
   const reader = upstream.body.getReader()
   const first = await readHead(reader)
-  const isPlaylist = new TextDecoder().decode(first.slice(0, 32)).trimStart().startsWith('#EXTM3U')
-  if (!isPlaylist) {
-    const start = upstream.status === 200 ? tsStart(first) : -1
+  const opening = new TextDecoder().decode(first.slice(0, 32)).trimStart()
+  const isPlaylist = opening.startsWith('#EXTM3U')
+  const isVtt = opening.startsWith('WEBVTT')
+  const isMp4 = /^video\/mp4/i.test(upstream.headers.get('content-type') ?? '')
+  if (!isPlaylist && !isVtt && !isMp4 && !trusted) {
+    await reader.cancel()
+    return json({ error: 'unsigned' }, 403)
+  }
+  if (!isPlaylist && !isVtt) {
+    const found = upstream.status === 200 ? tsStart(first) : -1
+    const start = found === 0 || isImage(first) ? found : -1
     if (start < 0) return new Response(pass(reader, upstream.body, first), { status: upstream.status, headers: outHeaders })
     outHeaders.set('content-type', 'video/mp2t')
     const length = Number(outHeaders.get('content-length'))
@@ -124,6 +200,7 @@ export async function proxy(req: Request): Promise<Response> {
   }
   const text = new TextDecoder().decode(await readAll(reader, first))
   outHeaders.delete('content-length')
-  outHeaders.set('content-type', 'application/vnd.apple.mpegurl')
-  return new Response(rewritePlaylist(text, target, `${url.origin}/proxy`, referer), { status: upstream.status, headers: outHeaders })
+  outHeaders.set('content-type', isVtt ? 'text/vtt; charset=utf-8' : 'application/vnd.apple.mpegurl')
+  const body = await (isVtt ? rewriteVtt : rewritePlaylist)(text, upstream.url || target, `${url.origin}/proxy`, referer, env.PROXY_SECRET)
+  return new Response(body, { status: upstream.status, headers: outHeaders })
 }

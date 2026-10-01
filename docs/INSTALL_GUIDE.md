@@ -54,7 +54,7 @@ You need [Node.js](https://nodejs.org) 22 or newer, [pnpm](https://pnpm.io/insta
 
 ### 7. Deploy your server
 
-This small server plays the videos and handles logins. It runs free on your own Cloudflare account. After `kv namespace create`, paste the printed `id` into `worker/wrangler.jsonc`, then run `deploy`. Keep the address it prints at the end.
+This small server plays the videos and handles logins. It runs free on your own Cloudflare account. After `kv namespace create`, paste the printed `id` into `worker/wrangler.jsonc`, then run `deploy`. Keep the address it prints at the end. Then run `npx wrangler secret put PROXY_SECRET` and paste a long random string, so only your app can use the server for videos.
 
 ![Deploy the server with wrangler](guide/07-pc-server.jpg)
 

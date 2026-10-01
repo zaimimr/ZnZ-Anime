@@ -4,8 +4,15 @@ export interface KVLike {
   delete(key: string): Promise<void>
 }
 
+export interface RateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>
+}
+
 export interface Env {
   PAIRS: KVLike
+  PROXY_SECRET?: string
+  PAIR_LIMIT?: RateLimiter
+  POLL_LIMIT?: RateLimiter
   ANILIST_CLIENT_ID: string
   MAL_CLIENT_ID: string
   MAL_CLIENT_SECRET: string
@@ -23,16 +30,24 @@ interface PairRecord {
   provider: Provider
   verifier?: string
   tokens?: Tokens
+  delivered?: boolean
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const PENDING_TTL = 600
 const DONE_TTL = 300
+const DELIVERED_TTL = 60
 
 export const cors = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, OPTIONS',
   'access-control-allow-headers': 'content-type, range',
+}
+
+export async function limited(limiter: RateLimiter | undefined, req: Request): Promise<boolean> {
+  if (!limiter) return false
+  const { success } = await limiter.limit({ key: req.headers.get('cf-connecting-ip') ?? 'unknown' })
+  return !success
 }
 
 export function json(body: unknown, status = 200): Response {
@@ -71,14 +86,18 @@ export async function createPair(req: Request, env: Env): Promise<Response> {
 export async function login(req: Request, env: Env, code: string): Promise<Response> {
   const record = await readPair(env, code)
   if (!record) return new Response('Code expired. Start again on the TV.', { status: 404 })
+  const name = record.provider === 'anilist' ? 'AniList' : 'MyAnimeList'
+  const confirm = (url: URL, headers?: Record<string, string>) =>
+    page(
+      `<p>Log in to ${name} for the TV showing the code <b>${escapeHtml(code)}</b>.</p><p>Only continue if this code is on your own TV screen right now.</p><p><a style="color:#8ab4ff" href="${escapeHtml(url.toString())}">Continue to ${name}</a></p>`,
+      200,
+      headers,
+    )
   if (record.provider === 'anilist') {
     const url = new URL('https://anilist.co/api/v2/oauth/authorize')
     url.searchParams.set('client_id', env.ANILIST_CLIENT_ID)
     url.searchParams.set('response_type', 'token')
-    return new Response(null, {
-      status: 302,
-      headers: { location: url.toString(), 'set-cookie': `znz_pair=${code}; Path=/callback; Max-Age=${PENDING_TTL}; Secure; HttpOnly; SameSite=Lax` },
-    })
+    return confirm(url, { 'set-cookie': `znz_pair=${code}; Path=/callback; Max-Age=${PENDING_TTL}; Secure; HttpOnly; SameSite=Lax` })
   }
   const url = new URL('https://myanimelist.net/v1/oauth2/authorize')
   url.searchParams.set('response_type', 'code')
@@ -87,7 +106,7 @@ export async function login(req: Request, env: Env, code: string): Promise<Respo
   url.searchParams.set('client_id', env.MAL_CLIENT_ID)
   url.searchParams.set('code_challenge', record.verifier!)
   url.searchParams.set('code_challenge_method', 'plain')
-  return Response.redirect(url.toString(), 302)
+  return confirm(url)
 }
 
 async function exchange(record: PairRecord, env: Env, oauthCode: string, redirectUri: string): Promise<{ tokens: Tokens } | { error: string }> {
@@ -122,9 +141,9 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 }
 
-function page(message: string, status = 200): Response {
+function page(message: string, status = 200, headers: Record<string, string> = {}): Response {
   const html = `<!doctype html><meta name="viewport" content="width=device-width"><body style="font:20px system-ui;padding:40px;background:#0b0d12;color:#f2f4f8">${message}</body>`
-  return new Response(html, { status, headers: { 'content-type': 'text/html; charset=utf-8' } })
+  return new Response(html, { status, headers: { ...headers, 'content-type': 'text/html; charset=utf-8' } })
 }
 
 export async function callback(req: Request, env: Env, provider: string): Promise<Response> {
@@ -171,7 +190,7 @@ export async function poll(env: Env, code: string): Promise<Response> {
   const record = await readPair(env, code)
   if (!record) return json({ status: 'missing' }, 404)
   if (!record.tokens) return json({ status: 'pending' }, 202)
-  await env.PAIRS.delete(`pair:${code}`)
+  if (!record.delivered) await env.PAIRS.put(`pair:${code}`, JSON.stringify({ ...record, delivered: true }), { expirationTtl: DELIVERED_TTL })
   return json({ status: 'done', tokens: record.tokens })
 }
 

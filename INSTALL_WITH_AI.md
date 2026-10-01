@@ -64,6 +64,7 @@ The app needs this server to play videos and to log in. It runs on the free Clou
 3. Replace the `id` inside `kv_namespaces` in `worker/wrangler.jsonc` with the id that was printed.
 4. Deploy with `npx wrangler deploy` and note the `https://znz-auth.<name>.workers.dev` address.
 5. Check it: `curl https://znz-auth.<name>.workers.dev/proxy` must return `{"error":"missing u"}`.
+6. Lock the video proxy so strangers cannot use it to fetch any file: run `openssl rand -hex 32 | npx wrangler secret put PROXY_SECRET`. The value never needs to be seen or saved anywhere else.
 
 Only if they want logins:
 
