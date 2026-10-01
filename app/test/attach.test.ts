@@ -79,17 +79,20 @@ describe('attachStream', () => {
     expect(instances[0].destroy).toHaveBeenCalled()
   })
 
-  it('gives up on a stream that stays stuck while playing', () => {
+  it('gives up on a stream whose time stops moving while playing', () => {
     vi.useFakeTimers()
     const el = document.createElement('video')
     let paused = false
-    let ready = 4
+    let time = 0
     Object.defineProperty(el, 'paused', { get: () => paused })
-    Object.defineProperty(el, 'readyState', { get: () => ready })
+    Object.defineProperty(el, 'readyState', { get: () => 1 })
+    Object.defineProperty(el, 'currentTime', { get: () => time })
     const onFatal = vi.fn()
     const detach = attachStream(el, 'https://x/a.mp4', 'mp4', onFatal)
-    vi.advanceTimersByTime(30_000)
-    ready = 1
+    for (let i = 0; i < 30; i++) {
+      time += 1
+      vi.advanceTimersByTime(1_000)
+    }
     paused = true
     vi.advanceTimersByTime(30_000)
     expect(onFatal).not.toHaveBeenCalled()

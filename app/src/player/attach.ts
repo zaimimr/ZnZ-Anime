@@ -10,8 +10,10 @@ export function nativePlayback(el: HTMLVideoElement, format: 'hls' | 'mp4'): boo
 
 function watchStalls(el: HTMLVideoElement, onStall: () => void): () => void {
   let stuck = 0
+  let last = -1
   const timer = setInterval(() => {
-    stuck = !el.paused && el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA ? stuck + 1 : 0
+    stuck = !document.hidden && !el.paused && !el.ended && el.currentTime === last ? stuck + 1 : 0
+    last = el.currentTime
     if (stuck < STUCK_SECONDS) return
     stuck = 0
     onStall()
