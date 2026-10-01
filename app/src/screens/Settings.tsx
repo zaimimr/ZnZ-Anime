@@ -7,9 +7,9 @@ import { malViewer } from '../mal/api'
 import { useRouter } from '../nav/router'
 import { getSettings, saveSettings, type Settings } from '../settings'
 import { orderedAdapters } from '../sources/registry'
-import { applyMerge, copyLocalList, isMerged, prepareMerge, readUnmatched } from '../sync/job'
+import { applyMerge, copyLocalList, forgetMerge, isMerged, prepareMerge, readUnmatched } from '../sync/job'
 import type { MergePlan } from '../sync/merge'
-import { readQueue } from '../sync/queue'
+import { clearQueue, readQueue } from '../sync/queue'
 import { flushQueue } from '../sync/writer'
 import { checkServer, hosts, serverUrl } from '../hosts'
 import { applyKey, keyboardRows } from './keyboard'
@@ -40,9 +40,9 @@ const toggles = [
 
 type Job = { step: 'idle' } | { step: 'working'; label: string } | { step: 'preview'; plan: MergePlan } | { step: 'done'; message: string } | { step: 'error'; message: string }
 
-function Row({ title, detail, children, onEnter, focusKey }: { title: string; detail?: ReactNode; children?: ReactNode; onEnter?: () => void; focusKey?: string }) {
+function Row({ title, detail, children, onEnter, onBlur, focusKey }: { title: string; detail?: ReactNode; children?: ReactNode; onEnter?: () => void; onBlur?: () => void; focusKey?: string }) {
   return (
-    <Focusable className="setting" focusKey={focusKey} onEnter={onEnter}>
+    <Focusable className="setting" focusKey={focusKey} onEnter={onEnter} onBlur={onBlur}>
       <span className="setting-text">
         <span className="setting-title">{title}</span>
         {detail && <span className="setting-detail">{detail}</span>}
@@ -168,7 +168,10 @@ export function SettingsScreen() {
     if (!accounts[provider]) return push({ name: 'pair', provider, next: 'settings' })
     if (confirmUnlink !== provider) return setConfirmUnlink(provider)
     clearToken(provider)
+    clearQueue(provider)
+    forgetMerge()
     invalidateLibrary()
+    setPending(readQueue().length)
     setConfirmUnlink(null)
     setAccounts((a) => ({ ...a, [provider]: false }))
     setNames((n) => ({ ...n, [provider]: '' }))
@@ -245,6 +248,7 @@ export function SettingsScreen() {
             key={p}
             title={providerNames[p]}
             onEnter={() => toggleAccount(p)}
+            onBlur={() => setConfirmUnlink((c) => (c === p ? null : c))}
             detail={accounts[p] ? (names[p] ? `Signed in as ${names[p]}` : 'Linked') : 'Not linked'}
           >
             <span className={`pill ${accounts[p] ? (confirmUnlink === p ? 'danger' : '') : 'accent'}`}>
@@ -417,7 +421,7 @@ export function SettingsScreen() {
             <div className="muted">{REPO}</div>
           </div>
         </div>
-        <Row title="Reset the app" detail="Logs out, forgets settings, progress and the list on this TV" onEnter={resetApp}>
+        <Row title="Reset the app" detail="Logs out, forgets settings, progress and the list on this TV" onEnter={resetApp} onBlur={() => setConfirmReset(false)}>
           <span className={`pill ${confirmReset ? 'danger' : ''}`}>{confirmReset ? 'Press OK to erase' : 'Reset'}</span>
         </Row>
       </>

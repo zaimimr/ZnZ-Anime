@@ -53,4 +53,13 @@ describe('library', () => {
     const info = { id: 1, idMal: 100, listStatus: undefined, progress: 0, score: 0 } as never
     expect(await libraryEntry(info)).toEqual({ status: 'paused', progress: 8, score: 0 })
   })
+
+  it('reloads from the next source when an expired AniList token fails the first load', async () => {
+    setToken('anilist', token)
+    vi.mocked(fetchList).mockImplementationOnce(async () => {
+      localStorage.removeItem('znz.tokens.anilist')
+      throw new Error('HTTP 400')
+    })
+    expect(await fetchLibrary()).toEqual([])
+  })
 })

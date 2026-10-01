@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { anilistIdsForMal, fetchList, fromStatus, mediaByIds, saveEntry, toRelated, toStatus, trendingWithHistory } from '../src/anilist/api'
+import { anilistEntry, anilistIdsForMal, fetchList, fromStatus, mediaByIds, saveEntry, toRelated, toStatus, trendingWithHistory } from '../src/anilist/api'
 import { getToken, setToken } from '../src/auth/tokens'
 import { AuthError } from '../src/http'
 
@@ -14,7 +14,8 @@ afterEach(() => vi.unstubAllGlobals())
 describe('status mapping', () => {
   it('maps AniList statuses both ways', () => {
     expect(toStatus('CURRENT')).toBe('watching')
-    expect(toStatus('REPEATING')).toBe('watching')
+    expect(toStatus('REPEATING')).toBe('rewatching')
+    expect(fromStatus('rewatching')).toBe('REPEATING')
     expect(toStatus('PLANNING')).toBe('planning')
     expect(fromStatus('paused')).toBe('PAUSED')
     expect(fromStatus('watching')).toBe('CURRENT')
@@ -41,8 +42,9 @@ describe('anilist api', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({ data: { Viewer: { id: 7, name: 'z' } } }))
       .mockResolvedValueOnce(Response.json({ data: { MediaListCollection: { lists: [
-        { entries: [{ mediaId: 1, status: 'CURRENT', progress: 3, score: 8, updatedAt: 50, media: media(1) }] },
-        { entries: [{ mediaId: 2, status: 'COMPLETED', progress: 12, score: 0, updatedAt: 60, media: media(2, { idMal: null }) }] },
+        { isCustomList: false, entries: [{ mediaId: 1, status: 'CURRENT', progress: 3, score: 8, updatedAt: 50, media: media(1) }] },
+        { isCustomList: false, entries: [{ mediaId: 2, status: 'COMPLETED', progress: 12, score: 0, updatedAt: 60, media: media(2, { idMal: null }) }] },
+        { isCustomList: true, entries: [{ mediaId: 1, status: 'CURRENT', progress: 3, score: 8, updatedAt: 50, media: media(1) }] },
       ] } } }))
     vi.stubGlobal('fetch', fetchMock)
     const items = await fetchList()
@@ -53,12 +55,27 @@ describe('anilist api', () => {
     expect(items[1].entry.malId).toBeUndefined()
   })
 
-  it('saves with scoreRaw on a 0 to 100 scale', async () => {
-    const fetchMock = gqlReply({ SaveMediaListEntry: { id: 1 } })
+  it('saves with scoreRaw on a 0 to 100 scale and returns the list entry id', async () => {
+    const fetchMock = gqlReply({ SaveMediaListEntry: { id: 31 } })
     vi.stubGlobal('fetch', fetchMock)
-    await saveEntry({ anilistId: 5, status: 'completed', progress: 12, score: 7 })
+    expect(await saveEntry({ anilistId: 5, status: 'completed', progress: 12, score: 7 })).toBe(31)
     const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
     expect(body.variables).toEqual({ mediaId: 5, status: 'COMPLETED', progress: 12, scoreRaw: 70 })
+  })
+
+  it('saves a rewatch as REPEATING', async () => {
+    const fetchMock = gqlReply({ SaveMediaListEntry: { id: 1 } })
+    vi.stubGlobal('fetch', fetchMock)
+    await saveEntry({ anilistId: 5, status: 'rewatching', progress: 2, score: 0 })
+    expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).variables.status).toBe('REPEATING')
+  })
+
+  it('reads the remote list entry progress and update time', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(Response.json({ data: { Media: { mediaListEntry: { progress: 4, updatedAt: 9 } } } }))
+      .mockResolvedValueOnce(Response.json({ data: { Media: { mediaListEntry: null } } })))
+    expect(await anilistEntry(1)).toEqual({ progress: 4, updatedAt: 9000 })
+    expect(await anilistEntry(2)).toBeNull()
   })
 
   it('keeps requested order in mediaByIds', async () => {

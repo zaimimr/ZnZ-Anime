@@ -9,7 +9,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export async function prepareMerge(): Promise<MergePlan> {
   const [items, mal] = await Promise.all([fetchList(), fetchMalList()])
-  const anilist = items.map((i) => i.entry)
+  const anilist = items.map((i) => ({ ...i.entry, updatedAt: i.updatedAt }))
   const known = new Set(anilist.map((a) => a.malId))
   const malOnly = mal.map((m) => m.malId!).filter((id) => !known.has(id))
   const ids = await anilistIdsForMal(malOnly)
@@ -41,13 +41,18 @@ export function readUnmatched(): ListEntry[] {
   }
 }
 
+export function forgetMerge(): void {
+  localStorage.removeItem('znz.merged')
+  localStorage.removeItem('znz.unmatched')
+}
+
 export function isMerged(): boolean {
   return localStorage.getItem('znz.merged') === '1'
 }
 
 export async function copyLocalList(onProgress: (done: number, total: number) => void, delayMs = 700): Promise<number> {
   const entries = readLocal()
-  const remote = new Map((await fetchLibrary()).map((i) => [i.entry.anilistId, i.entry]))
+  const remote = new Map((await fetchLibrary()).map((i) => [i.entry.anilistId, { ...i.entry, updatedAt: i.updatedAt }]))
   const malOnly = syncTargets().every((t) => t === 'mal')
   const skipped = entries.filter((e) => malOnly && !e.malId)
   const copy = entries.filter((e) => !skipped.includes(e))

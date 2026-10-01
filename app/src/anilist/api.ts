@@ -29,10 +29,9 @@ export interface Details extends Card {
 
 const CARD = 'id idMal title { romaji english native } coverImage { large } episodes'
 
-const toAnilist: Record<Status, string> = { watching: 'CURRENT', completed: 'COMPLETED', paused: 'PAUSED', dropped: 'DROPPED', planning: 'PLANNING' }
+const toAnilist: Record<Status, string> = { watching: 'CURRENT', rewatching: 'REPEATING', completed: 'COMPLETED', paused: 'PAUSED', dropped: 'DROPPED', planning: 'PLANNING' }
 
 export function toStatus(value: string): Status {
-  if (value === 'CURRENT' || value === 'REPEATING') return 'watching'
   return (Object.keys(toAnilist) as Status[]).find((s) => toAnilist[s] === value) ?? 'planning'
 }
 
@@ -79,13 +78,13 @@ export function toListItem(media: ListMedia, entry: Omit<ListEntry, 'anilistId' 
 
 export async function fetchList(): Promise<ListItem[]> {
   const { id } = await viewer()
-  const data = await gql<{ MediaListCollection: { lists: { entries: { id: number; status: string; progress: number; score: number; updatedAt: number; media: ListMedia }[] }[] } }>(
-    `query ($userId: Int) { MediaListCollection(userId: $userId, type: ANIME) { lists { entries { id status progress score(format: POINT_10) updatedAt media { ${CARD} status nextAiringEpisode { episode airingAt } } } } } }`,
+  const data = await gql<{ MediaListCollection: { lists: { isCustomList: boolean; entries: { id: number; status: string; progress: number; score: number; updatedAt: number; media: ListMedia }[] }[] } }>(
+    `query ($userId: Int) { MediaListCollection(userId: $userId, type: ANIME) { lists { isCustomList entries { id status progress score(format: POINT_10) updatedAt media { ${CARD} status nextAiringEpisode { episode airingAt } } } } } }`,
     { userId: id },
   )
-  return data.MediaListCollection.lists.flatMap((list) =>
-    list.entries.map((e) => toListItem(e.media, { status: toStatus(e.status), progress: e.progress, score: e.score }, e.updatedAt * 1000, e.id)),
-  )
+  const entries = data.MediaListCollection.lists.filter((list) => !list.isCustomList).flatMap((list) => list.entries)
+  const unique = [...new Map(entries.map((e) => [e.media.id, e])).values()]
+  return unique.map((e) => toListItem(e.media, { status: toStatus(e.status), progress: e.progress, score: e.score }, e.updatedAt * 1000, e.id))
 }
 
 const lookupCache = new Map<string, { at: number; media: ListMedia }>()
@@ -112,11 +111,18 @@ export async function mediaLookup(by: 'id' | 'idMal', ids: number[]): Promise<Ma
   return result
 }
 
-export async function saveEntry(change: Change): Promise<void> {
-  await gql(
+export async function saveEntry(change: Change): Promise<number> {
+  const data = await gql<{ SaveMediaListEntry: { id: number } }>(
     'mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int, $scoreRaw: Int) { SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, scoreRaw: $scoreRaw) { id } }',
     { mediaId: change.anilistId, status: fromStatus(change.status), progress: change.progress, scoreRaw: Math.round(change.score * 10) },
   )
+  return data.SaveMediaListEntry.id
+}
+
+export async function anilistEntry(mediaId: number): Promise<{ progress: number; updatedAt: number } | null> {
+  const data = await gql<{ Media: { mediaListEntry: { progress: number; updatedAt: number } | null } }>('query ($id: Int) { Media(id: $id) { mediaListEntry { progress updatedAt } } }', { id: mediaId })
+  const entry = data.Media.mediaListEntry
+  return entry ? { progress: entry.progress, updatedAt: entry.updatedAt * 1000 } : null
 }
 
 export async function deleteEntry(listId: number): Promise<void> {

@@ -94,7 +94,7 @@ export function fetchLibrary(retry = true): Promise<ListItem[]> {
   const source = listSource()
   if (memo && memo.source === source && Date.now() - memo.at < 120_000) return memo.items
   const items = load(source).catch((e: unknown) => {
-    if (retry && e instanceof AuthError) return fetchLibrary(false)
+    if (retry && (e instanceof AuthError || listSource() !== source)) return fetchLibrary(false)
     throw e
   })
   const current = { at: Date.now(), source, items }

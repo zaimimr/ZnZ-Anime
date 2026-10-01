@@ -27,6 +27,17 @@ describe('mergeEntry', () => {
     expect(mergeEntry(e('watching', 0, 0), e('watching', 0, 6)).score).toBe(6)
   })
 
+  it('takes status and score from the side changed last', () => {
+    expect(mergeEntry(e('paused', 3, 4, { updatedAt: 2 }), e('completed', 12, 9, { updatedAt: 1 }))).toEqual({ status: 'paused', progress: 12, score: 4 })
+    expect(mergeEntry(e('completed', 12, 9, { updatedAt: 1 }), e('dropped', 3, 0, { updatedAt: 2 }))).toEqual({ status: 'dropped', progress: 12, score: 0 })
+    expect(mergeEntry(e('paused', 3, 4, { updatedAt: 2 }), e('completed', 12, 9)).status).toBe('completed')
+  })
+
+  it('ranks rewatching between completed and watching', () => {
+    expect(mergeEntry(e('rewatching', 0, 0), e('watching', 0, 0)).status).toBe('rewatching')
+    expect(mergeEntry(e('rewatching', 0, 0), e('completed', 0, 0)).status).toBe('completed')
+  })
+
   it('uses the only side present', () => {
     expect(mergeEntry(undefined, e('paused', 2, 5))).toEqual({ status: 'paused', progress: 2, score: 5 })
     expect(mergeEntry(e('paused', 2, 5), undefined)).toEqual({ status: 'paused', progress: 2, score: 5 })

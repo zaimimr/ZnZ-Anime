@@ -39,4 +39,22 @@ describe('tokens', () => {
     await expect(validToken('mal')).rejects.toBeInstanceOf(AuthError)
     expect(getToken('mal')).toBeNull()
   })
+
+  it('shares one MAL refresh between concurrent callers', async () => {
+    setToken('mal', { accessToken: 'old', refreshToken: 'R', expiresAt: Date.now() - 1 })
+    const fetchMock = vi.fn(async () => Response.json({ accessToken: 'new', refreshToken: 'R2', expiresAt: Date.now() + 1e9 }))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await Promise.all([validToken('mal'), validToken('mal')])).toEqual(['new', 'new'])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses a token stored during a rejected refresh instead of logging out', async () => {
+    setToken('mal', { accessToken: 'old', refreshToken: 'R', expiresAt: Date.now() - 1 })
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      setToken('mal', { accessToken: 'other', refreshToken: 'R3', expiresAt: Date.now() + 1e9 })
+      return new Response('', { status: 401 })
+    }))
+    expect(await validToken('mal')).toBe('other')
+    expect(getToken('mal')?.accessToken).toBe('other')
+  })
 })

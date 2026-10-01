@@ -9,7 +9,7 @@ vi.mock('../src/anilist/api', () => ({
           { card: card(1), history: [{ date: 900_000, trending: 5 }, { date: 100, trending: 1000 }] },
           { card: card(2), history: [{ date: 900_000, trending: 9 }] },
         ]
-      : [{ card: card(3), history: [{ date: 800_000, trending: 20 }] }],
+      : [{ card: card(3), history: [{ date: 800_000, trending: 20 }] }, { card: card(1), history: [{ date: 900_000, trending: 100 }] }],
     hasNext: page < 2,
   })),
 }))

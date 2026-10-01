@@ -28,11 +28,20 @@ export function expire(provider: Provider): AuthError {
   return new AuthError(provider)
 }
 
+let refreshing: Promise<string> | null = null
+
 export async function validToken(provider: Provider): Promise<string> {
   const tokens = getToken(provider)
   if (!tokens) throw new AuthError(provider)
   if (tokens.expiresAt - Date.now() > 60_000) return tokens.accessToken
   if (provider === 'anilist' || !tokens.refreshToken) throw expire(provider)
+  refreshing ??= refreshMal(tokens).finally(() => {
+    refreshing = null
+  })
+  return refreshing
+}
+
+async function refreshMal(tokens: Tokens): Promise<string> {
   try {
     const res = await request(`${hosts.auth}/refresh/mal`, {
       method: 'POST',
@@ -44,6 +53,8 @@ export async function validToken(provider: Provider): Promise<string> {
     return fresh.accessToken
   } catch (e) {
     if (!(e instanceof HttpError) || e.status !== 401) throw e
+    const now = getToken('mal')
+    if (now && now.accessToken !== tokens.accessToken) return now.accessToken
     throw expire('mal')
   }
 }

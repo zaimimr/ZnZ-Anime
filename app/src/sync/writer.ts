@@ -1,10 +1,14 @@
-import { deleteEntry, saveEntry } from '../anilist/api'
+import { anilistEntry, deleteEntry, saveEntry } from '../anilist/api'
 import { getToken } from '../auth/tokens'
-import { AuthError } from '../http'
+import { AuthError, HttpError } from '../http'
 import { invalidateLibrary, removeLocal, saveLocal, syncTargets } from '../library'
-import { deleteMalEntry, saveMalEntry } from '../mal/api'
+import { deleteMalEntry, malEntry, saveMalEntry } from '../mal/api'
 import type { Change } from '../types'
-import { enqueue, readQueue, removeFromQueue, type Target } from './queue'
+import { countAttempt, enqueue, type QueueItem, readQueue, removeFromQueue, type Target } from './queue'
+
+const MAX_ATTEMPTS = 5
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export class NotOnMalError extends Error {
   constructor() {
@@ -12,29 +16,44 @@ export class NotOnMalError extends Error {
   }
 }
 
-async function attempt(target: Target, change: Change): Promise<AuthError | null> {
+function retryable(e: unknown): boolean {
+  if (e instanceof AuthError) return true
+  if (e instanceof HttpError) return e.status === 429 || e.status >= 500
+  return e instanceof TypeError || (e as Error)?.name === 'AbortError'
+}
+
+function send(target: Target, change: Change): Promise<number | undefined> {
+  return target === 'anilist' ? saveEntry(change) : saveMalEntry(change).then(() => undefined)
+}
+
+async function attempt(target: Target, change: Change): Promise<{ listId?: number; auth?: AuthError }> {
   try {
-    await (target === 'anilist' ? saveEntry(change) : saveMalEntry(change))
+    const listId = await send(target, change)
     removeFromQueue({ target, change })
-    return null
+    return { listId }
   } catch (e) {
-    enqueue(target, change)
-    return e instanceof AuthError ? e : null
+    if (retryable(e)) enqueue(target, change)
+    else removeFromQueue({ target, change })
+    return e instanceof AuthError ? { auth: e } : {}
   }
 }
 
-export async function saveEverywhere(change: Change): Promise<void> {
+export async function saveEverywhere(change: Change): Promise<number | undefined> {
   invalidateLibrary()
   const targets = syncTargets()
-  if (!targets.length) return saveLocal(change)
+  if (!targets.length) return void saveLocal(change)
   if (targets.length === 1 && targets[0] === 'mal' && !change.malId) throw new NotOnMalError()
-  let auth: AuthError | null = null
+  let auth: AuthError | undefined
+  let listId: number | undefined
   for (const target of targets) {
     if (target === 'mal' && !change.malId) continue
-    auth = (await attempt(target, change)) ?? auth
+    const result = await attempt(target, change)
+    auth = result.auth ?? auth
+    listId = result.listId ?? listId
   }
   invalidateLibrary()
   if (auth) throw auth
+  return listId
 }
 
 export async function removeEverywhere(anilistId: number, listId: number | undefined, malId: number | undefined): Promise<void> {
@@ -49,14 +68,27 @@ export async function removeEverywhere(anilistId: number, listId: number | undef
   }
 }
 
-export async function flushQueue(): Promise<void> {
+async function stale(item: QueueItem): Promise<boolean> {
+  const { target, change } = item
+  const remote = target === 'anilist' ? await anilistEntry(change.anilistId!) : await malEntry(change.malId!)
+  if (!remote) return false
+  if (item.queuedAt && remote.updatedAt) return remote.updatedAt > item.queuedAt
+  return remote.progress > change.progress
+}
+
+export async function flushQueue(delayMs = 700): Promise<void> {
+  let sent = false
   for (const item of readQueue()) {
     if (!getToken(item.target)) continue
+    if (sent) await sleep(item.target === 'anilist' ? delayMs : delayMs / 2)
+    sent = true
     try {
-      await (item.target === 'anilist' ? saveEntry(item.change) : saveMalEntry(item.change))
+      if (!(await stale(item))) await send(item.target, item.change)
       removeFromQueue(item, true)
-    } catch {
-      continue
+    } catch (e) {
+      if (!retryable(e) || (item.attempts ?? 0) + 1 >= MAX_ATTEMPTS) removeFromQueue(item, true)
+      else countAttempt(item)
+      if (e instanceof HttpError && e.status === 429) return
     }
   }
 }

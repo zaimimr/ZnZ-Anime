@@ -3,13 +3,14 @@ import { hosts } from '../hosts'
 import { AuthError, request } from '../http'
 import type { Change, ListEntry, Status } from '../types'
 
-const toMal: Record<Status, string> = { watching: 'watching', completed: 'completed', paused: 'on_hold', dropped: 'dropped', planning: 'plan_to_watch' }
+const toMal: Record<Status, string> = { watching: 'watching', completed: 'completed', paused: 'on_hold', dropped: 'dropped', planning: 'plan_to_watch', rewatching: 'completed' }
 
 export function malStatus(status: Status): string {
   return toMal[status]
 }
 
-function fromMal(value: string): Status {
+function fromMal(value: string, rewatching = false): Status {
+  if (rewatching) return 'rewatching'
   return (Object.keys(toMal) as Status[]).find((s) => toMal[s] === value) ?? 'planning'
 }
 
@@ -30,20 +31,21 @@ export async function fetchMalList(): Promise<ListEntry[]> {
   let url: string | undefined = `${hosts.mal}/v2/users/@me/animelist?fields=list_status&limit=1000&nsfw=true`
   while (url) {
     const res = await malRequest(url)
-    const body = (await res.json()) as { data: { node: { id: number; title: string }; list_status: { status: string; num_episodes_watched: number; score: number; updated_at?: string } }[]; paging: { next?: string } }
+    const body = (await res.json()) as { data: { node: { id: number; title: string }; list_status: { status: string; num_episodes_watched: number; score: number; is_rewatching?: boolean; updated_at?: string } }[]; paging: { next?: string } }
     for (const item of body.data) {
-      entries.push({ malId: item.node.id, title: item.node.title, status: fromMal(item.list_status.status), progress: item.list_status.num_episodes_watched, score: item.list_status.score, ...(item.list_status.updated_at ? { updatedAt: Date.parse(item.list_status.updated_at) } : {}) })
+      entries.push({ malId: item.node.id, title: item.node.title, status: fromMal(item.list_status.status, item.list_status.is_rewatching), progress: item.list_status.num_episodes_watched, score: item.list_status.score, ...(item.list_status.updated_at ? { updatedAt: Date.parse(item.list_status.updated_at) } : {}) })
     }
     url = body.paging.next?.replace('https://api.myanimelist.net', hosts.mal)
   }
   return entries
 }
 
-export async function malEntry(malId: number): Promise<{ status?: Status; progress: number; score: number }> {
+export async function malEntry(malId: number): Promise<{ status?: Status; progress: number; score: number; updatedAt?: number }> {
   const res = await malRequest(`${hosts.mal}/v2/anime/${malId}?fields=my_list_status`)
-  const body = (await res.json()) as { my_list_status?: { status: string; num_episodes_watched: number; score: number } }
+  const body = (await res.json()) as { my_list_status?: { status: string; num_episodes_watched: number; score: number; is_rewatching?: boolean; updated_at?: string } }
   const mine = body.my_list_status
-  return mine ? { status: fromMal(mine.status), progress: mine.num_episodes_watched, score: mine.score } : { progress: 0, score: 0 }
+  if (!mine) return { progress: 0, score: 0 }
+  return { status: fromMal(mine.status, mine.is_rewatching), progress: mine.num_episodes_watched, score: mine.score, ...(mine.updated_at ? { updatedAt: Date.parse(mine.updated_at) } : {}) }
 }
 
 export async function malViewer(): Promise<{ name: string }> {
@@ -59,6 +61,6 @@ export async function saveMalEntry(change: Change): Promise<void> {
   await malRequest(`${hosts.mal}/v2/anime/${change.malId}/my_list_status`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ status: malStatus(change.status), num_watched_episodes: String(change.progress), score: String(Math.round(change.score)) }).toString(),
+    body: new URLSearchParams({ status: malStatus(change.status), num_watched_episodes: String(change.progress), score: String(Math.round(change.score)), is_rewatching: String(change.status === 'rewatching') }).toString(),
   })
 }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getToken, setToken } from '../src/auth/tokens'
 import { AuthError } from '../src/http'
-import { fetchMalList, saveMalEntry } from '../src/mal/api'
+import { fetchMalList, malEntry, saveMalEntry } from '../src/mal/api'
 
 beforeEach(() => { localStorage.clear(); setToken('mal', { accessToken: 'MT', refreshToken: 'R', expiresAt: Date.now() + 1e9 }) })
 afterEach(() => vi.unstubAllGlobals())
@@ -35,6 +35,22 @@ describe('mal api', () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://api.myanimelist.net/v2/anime/9/my_list_status')
     expect(init.method).toBe('PATCH')
-    expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({ status: 'watching', num_watched_episodes: '3', score: '8' })
+    expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({ status: 'watching', num_watched_episodes: '3', score: '8', is_rewatching: 'false' })
+  })
+
+  it('saves a rewatch as completed with the rewatch flag', async () => {
+    const fetchMock = vi.fn(async () => Response.json({}))
+    vi.stubGlobal('fetch', fetchMock)
+    await saveMalEntry({ malId: 9, status: 'rewatching', progress: 2, score: 0 })
+    const body = new URLSearchParams((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect([body.get('status'), body.get('is_rewatching')]).toEqual(['completed', 'true'])
+  })
+
+  it('reads the rewatch flag back as rewatching', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(Response.json({ data: [{ node: { id: 1, title: 'A' }, list_status: { status: 'completed', num_episodes_watched: 2, score: 0, is_rewatching: true } }], paging: {} }))
+      .mockResolvedValueOnce(Response.json({ my_list_status: { status: 'completed', num_episodes_watched: 3, score: 0, is_rewatching: true, updated_at: '2026-01-01T00:00:00Z' } })))
+    expect((await fetchMalList())[0].status).toBe('rewatching')
+    expect(await malEntry(1)).toEqual({ status: 'rewatching', progress: 3, score: 0, updatedAt: Date.parse('2026-01-01T00:00:00Z') })
   })
 })

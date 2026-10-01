@@ -1,5 +1,5 @@
 export type Provider = 'anilist' | 'mal'
-export type Status = 'watching' | 'completed' | 'paused' | 'dropped' | 'planning'
+export type Status = 'watching' | 'rewatching' | 'completed' | 'paused' | 'dropped' | 'planning'
 export type Lang = 'sub' | 'dub'
 export interface Tokens { accessToken: string; refreshToken?: string; expiresAt: number }
 export interface ListEntry { anilistId?: number; malId?: number; title: string; status: Status; progress: number; score: number; updatedAt?: number }

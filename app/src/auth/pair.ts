@@ -12,9 +12,9 @@ export async function startPair(provider: Provider): Promise<{ code: string; pai
 }
 
 export async function pollPair(code: string): Promise<Tokens | 'pending' | 'expired'> {
-  const res = await fetch(`${hosts.auth}/pair/${code}`)
-  if (res.status === 202) return 'pending'
-  if (!res.ok) return 'expired'
+  const res = await fetch(`${hosts.auth}/pair/${code}`).catch(() => null)
+  if (res?.status === 404 || res?.status === 410) return 'expired'
+  if (!res?.ok || res.status === 202) return 'pending'
   const body = (await res.json()) as { tokens: Tokens }
   return body.tokens
 }

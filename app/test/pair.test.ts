@@ -23,4 +23,16 @@ describe('pair client', () => {
     expect(await pollPair('ABC234')).toEqual(tokens)
     expect(await pollPair('ABC234')).toBe('expired')
   })
+
+  it('keeps waiting on server errors, rate limits and network failures', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response('', { status: 429 }))
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(new Response('', { status: 410 })))
+    expect(await pollPair('ABC234')).toBe('pending')
+    expect(await pollPair('ABC234')).toBe('pending')
+    expect(await pollPair('ABC234')).toBe('pending')
+    expect(await pollPair('ABC234')).toBe('expired')
+  })
 })

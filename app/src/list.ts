@@ -1,11 +1,11 @@
 import type { ListItem, Status } from './types'
 
-export const statusOrder: Status[] = ['watching', 'planning', 'paused', 'completed', 'dropped']
-export const statusLabels: Record<Status, string> = { watching: 'Watching', planning: 'Planning', paused: 'Paused', completed: 'Completed', dropped: 'Dropped' }
+export const statusOrder: Status[] = ['watching', 'rewatching', 'planning', 'paused', 'completed', 'dropped']
+export const statusLabels: Record<Status, string> = { watching: 'Watching', rewatching: 'Rewatching', planning: 'Planning', paused: 'Paused', completed: 'Completed', dropped: 'Dropped' }
 
 export function newEpisodes(items: ListItem[]): ListItem[] {
   return items
-    .filter((i) => i.entry.status === 'watching' && i.nextAiring && i.aired !== undefined && i.aired > i.entry.progress)
+    .filter((i) => (i.entry.status === 'watching' || i.entry.status === 'rewatching') && i.nextAiring && i.aired !== undefined && i.aired > i.entry.progress)
     .sort((a, b) => b.nextAiring!.at - a.nextAiring!.at)
 }
 

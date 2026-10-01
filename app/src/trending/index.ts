@@ -15,7 +15,7 @@ function trendPool(): Promise<TrendItem[]> {
     const items: TrendItem[] = []
     for (let page = 1; page <= POOL_PAGES; page++) {
       const result = await trendingWithHistory(page)
-      items.push(...result.items)
+      items.push(...result.items.filter((item) => !items.some((i) => i.card.id === item.card.id)))
       if (!result.hasNext) break
     }
     return items

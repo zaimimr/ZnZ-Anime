@@ -15,7 +15,7 @@ vi.mock('../src/mal/api', () => ({
 
 import { anilistIdsForMal, saveEntry } from '../src/anilist/api'
 import { saveMalEntry } from '../src/mal/api'
-import { applyMerge, isMerged, prepareMerge, readUnmatched } from '../src/sync/job'
+import { applyMerge, forgetMerge, isMerged, prepareMerge, readUnmatched } from '../src/sync/job'
 
 beforeEach(() => localStorage.clear())
 
@@ -36,6 +36,9 @@ describe('merge job', () => {
     expect(progress).toEqual([1, 2])
     expect(isMerged()).toBe(true)
     expect(readUnmatched().map((u) => u.title)).toEqual(['X'])
+    forgetMerge()
+    expect(isMerged()).toBe(false)
+    expect(readUnmatched()).toEqual([])
   })
 })
 

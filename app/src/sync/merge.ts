@@ -1,6 +1,6 @@
 import type { Change, ListEntry, Status } from '../types'
 
-const rank: Record<Status, number> = { completed: 4, watching: 3, paused: 2, planning: 1, dropped: 0 }
+const rank: Record<Status, number> = { completed: 5, rewatching: 4, watching: 3, paused: 2, planning: 1, dropped: 0 }
 
 type Merged = Pick<ListEntry, 'status' | 'progress' | 'score'>
 
@@ -13,9 +13,14 @@ export interface MergePlan {
 export function mergeEntry(a: ListEntry | undefined, m: ListEntry | undefined): Merged {
   const only = a ?? m
   if (!a || !m) return { status: only!.status, progress: only!.progress, score: only!.score }
+  const progress = Math.max(a.progress, m.progress)
+  if (a.updatedAt && m.updatedAt && a.updatedAt !== m.updatedAt) {
+    const newer = a.updatedAt > m.updatedAt ? a : m
+    return { status: newer.status, progress, score: newer.score }
+  }
   return {
     status: rank[a.status] >= rank[m.status] ? a.status : m.status,
-    progress: Math.max(a.progress, m.progress),
+    progress,
     score: a.score > 0 ? a.score : m.score,
   }
 }
