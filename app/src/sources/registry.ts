@@ -12,6 +12,7 @@ export function orderedAdapters(): SourceAdapter[] {
 }
 
 export async function resolveFirst(media: MediaRef, skip: string[] = []): Promise<{ adapter: SourceAdapter; show: SourceShow; episodes: Episode[] } | null> {
+  let failure: unknown
   for (const adapter of orderedAdapters()) {
     if (skip.includes(adapter.id)) continue
     try {
@@ -19,10 +20,11 @@ export async function resolveFirst(media: MediaRef, skip: string[] = []): Promis
       if (!show) continue
       const episodes = await adapter.episodes(show)
       if (episodes.length) return { adapter, show, episodes }
-    } catch {
-      continue
+    } catch (e) {
+      failure = e
     }
   }
+  if (failure) throw failure
   return null
 }
 

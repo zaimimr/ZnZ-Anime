@@ -31,7 +31,12 @@ describe('resolveFirst', () => {
   it('skips adapters that throw or are excluded', async () => {
     adapters.a.resolve = vi.fn(async () => { throw new Error('down') })
     expect((await resolveFirst({ anilistId: 1, titles: ['x'] }))?.adapter.id).toBe('b')
-    expect(await resolveFirst({ anilistId: 1, titles: ['x'] }, ['b'])).toBeNull()
+    expect(await resolveFirst({ anilistId: 1, titles: ['x'] }, ['a', 'b'])).toBeNull()
+  })
+
+  it('rethrows when a source fails and none has the anime', async () => {
+    adapters.a.resolve = vi.fn(async () => { throw new Error('down') })
+    await expect(resolveFirst({ anilistId: 1, titles: ['x'] }, ['b'])).rejects.toThrow('down')
   })
 
   it('returns null when no adapter has the anime', async () => {

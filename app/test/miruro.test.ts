@@ -52,6 +52,11 @@ describe('parse', () => {
     expect(parseEpisodes({ data: [{ episode_number: 1, title: 'Start' }, { episode_number: 2 }] })).toEqual([{ number: 1, title: 'Start' }, { number: 2, title: undefined }])
   })
 
+  it('drops episodes without a number and skip ranges without bounds', () => {
+    const eps = parseEpisodes({ data: [{ episode_number: 'x' }, { episode_number: 3, skip_times: [{ kind: 'op', start_seconds: 1 }, { kind: 'ed', start_seconds: 2, end_seconds: 9 }] }] })
+    expect(eps).toEqual([{ number: 3, title: undefined, skip: [{ kind: 'ed', start: 2, end: 9 }] }])
+  })
+
   it('parses episode picture, synopsis, length and skip times', () => {
     const [ep] = parseEpisodes({ data: [{ episode_number: 1, title: 'Start', synopsis: 'Hi', thumbnail_url: 'https://image.tmdb.org/t/p/original/a.jpg', duration_seconds: 1500, skip_times: [{ kind: 'op', start_seconds: 1, end_seconds: 91 }, { kind: 'mixed_op', start_seconds: 5, end_seconds: 95 }] }] })
     expect(ep).toEqual({ number: 1, title: 'Start', synopsis: 'Hi', thumbnail: 'https://image.tmdb.org/t/p/w300/a.jpg', duration: 1500, skip: [{ kind: 'op', start: 1, end: 91 }] })

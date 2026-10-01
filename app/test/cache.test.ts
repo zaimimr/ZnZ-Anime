@@ -18,4 +18,10 @@ describe('cached', () => {
     localStorage.setItem('znz.cache.k', '{nope')
     expect(await cached('k', 1000, async () => 'fresh')).toBe('fresh')
   })
+
+  it('returns the loaded value when storage is full', async () => {
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    expect(await cached('k', 1000, async () => 'fresh')).toBe('fresh')
+    spy.mockRestore()
+  })
 })

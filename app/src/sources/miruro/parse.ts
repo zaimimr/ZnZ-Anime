@@ -20,13 +20,13 @@ function subtitles(raw: Raw[]): Subtitle[] {
 function skips(...sources: Raw[]): SkipRange[] | undefined {
   const all = sources.flatMap((s) => list(s?.skip_times))
   const ranges = all
-    .filter((s) => (s.kind === 'op' || s.kind === 'ed') && typeof s.start_seconds === 'number')
+    .filter((s) => (s.kind === 'op' || s.kind === 'ed') && Number.isFinite(s.start_seconds) && Number.isFinite(s.end_seconds))
     .map((s) => ({ kind: s.kind, start: s.start_seconds, end: s.end_seconds }) as SkipRange)
   return ranges.length ? ranges : undefined
 }
 
 export function parseEpisodes(data: unknown): Episode[] {
-  return list((data as Raw)?.data).map((e) => {
+  return list((data as Raw)?.data).filter((e) => !Number.isNaN(Number(e.episode_number))).map((e) => {
     const skip = skips(e)
     return {
       number: Number(e.episode_number),

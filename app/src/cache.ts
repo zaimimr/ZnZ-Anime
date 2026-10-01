@@ -7,6 +7,10 @@ export async function cached<T>(key: string, ttlMs: number, load: () => Promise<
     localStorage.removeItem(storageKey)
   }
   const value = await load()
-  localStorage.setItem(storageKey, JSON.stringify({ at: Date.now(), value }))
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ at: Date.now(), value }))
+  } catch {
+    localStorage.removeItem(storageKey)
+  }
   return value
 }
