@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
 import { b64urlDecode, b64urlEncode } from '../src/b64'
-import { rewritePlaylist } from '../src/proxy'
+import { pickAudio, rewritePlaylist } from '../src/proxy'
 import { memoryKV } from './kv'
 
 const env = { PAIRS: memoryKV(), ANILIST_CLIENT_ID: '', MAL_CLIENT_ID: '', MAL_CLIENT_SECRET: '' }
@@ -40,6 +40,36 @@ describe('rewritePlaylist', () => {
     const lines = (await rewritePlaylist(pl, 'https://cdn.test/a/pl.m3u8', 'https://auth.test/proxy')).split('\n')
     expect(lines[1]).toBe('#EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://key-id"')
     expect(lines[2]).toBe('data:video/mp2t;base64,AAAA')
+  })
+})
+
+describe('pickAudio', () => {
+  const master = [
+    '#EXTM3U',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="stereo",NAME="Hindi",LANGUAGE="hin",URI="hin.m3u8"',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="stereo",NAME="English",LANGUAGE="eng",URI="eng.m3u8"',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="stereo",NAME="Japanese",DEFAULT=YES,LANGUAGE="jpn",URI="jpn.m3u8"',
+    '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",LANGUAGE="eng",URI="subs.m3u8"',
+    '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="stereo"',
+    'v.m3u8',
+  ].join('\n')
+
+  it('keeps only the English track for dub and makes it the default', () => {
+    const lines = pickAudio(master, 'dub').split('\n')
+    expect(lines.filter((l) => l.includes('TYPE=AUDIO'))).toEqual(['#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="stereo",NAME="English",LANGUAGE="eng",URI="eng.m3u8",DEFAULT=YES'])
+    expect(lines).toContain('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",LANGUAGE="eng",URI="subs.m3u8"')
+    expect(lines.at(-1)).toBe('v.m3u8')
+  })
+
+  it('keeps only the Japanese track for sub', () => {
+    expect(pickAudio(master, 'sub').split('\n').filter((l) => l.includes('TYPE=AUDIO'))).toEqual(['#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="stereo",NAME="Japanese",DEFAULT=YES,LANGUAGE="jpn",URI="jpn.m3u8"'])
+  })
+
+  it('leaves the playlist alone when the language is missing or unknown', () => {
+    const noEnglish = master.split('\n').filter((l) => !l.includes('"eng.m3u8"')).join('\n')
+    expect(pickAudio(noEnglish, 'dub')).toBe(noEnglish)
+    expect(pickAudio(master, null)).toBe(master)
+    expect(pickAudio(master, 'xx')).toBe(master)
   })
 })
 

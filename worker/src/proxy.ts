@@ -51,6 +51,21 @@ export async function rewritePlaylist(body: string, playlistUrl: string, proxyBa
   return lines.join('\n')
 }
 
+const AUDIO_LANGS: Record<string, string[]> = { sub: ['ja', 'jpn'], dub: ['en', 'eng'] }
+
+export function pickAudio(body: string, lang: string | null): string {
+  const codes = lang ? AUDIO_LANGS[lang] : undefined
+  if (!codes) return body
+  const isAudio = (line: string) => line.startsWith('#EXT-X-MEDIA:') && /TYPE=AUDIO/.test(line)
+  const wanted = (line: string) => codes.includes(line.match(/LANGUAGE="([^"]+)"/)?.[1]?.toLowerCase() ?? '')
+  const lines = body.split('\n')
+  if (!lines.some((l) => isAudio(l) && wanted(l))) return body
+  return lines
+    .filter((l) => !isAudio(l) || wanted(l))
+    .map((l) => (isAudio(l) ? (/DEFAULT=/.test(l) ? l.replace(/DEFAULT=(YES|NO)/, 'DEFAULT=YES') : `${l},DEFAULT=YES`) : l))
+    .join('\n')
+}
+
 const cueUrl = (line: string) => /^\S+$/.test(line) && (/^(https?:\/\/|\.{0,2}\/)/i.test(line) || /\.(jpe?g|png|webp|gif|bmp|avif)([?#]|$)/i.test(line))
 
 export async function rewriteVtt(body: string, vttUrl: string, proxyBase: string, referer?: string, secret?: string): Promise<string> {
@@ -201,6 +216,6 @@ export async function proxy(req: Request, env: Env): Promise<Response> {
   const text = new TextDecoder().decode(await readAll(reader, first))
   outHeaders.delete('content-length')
   outHeaders.set('content-type', isVtt ? 'text/vtt; charset=utf-8' : 'application/vnd.apple.mpegurl')
-  const body = await (isVtt ? rewriteVtt : rewritePlaylist)(text, upstream.url || target, `${url.origin}/proxy`, referer, env.PROXY_SECRET)
+  const body = await (isVtt ? rewriteVtt : rewritePlaylist)(isVtt ? text : pickAudio(text, url.searchParams.get('a')), upstream.url || target, `${url.origin}/proxy`, referer, env.PROXY_SECRET)
   return new Response(body, { status: upstream.status, headers: outHeaders })
 }
