@@ -16,6 +16,7 @@ const fake = (id: string, found: boolean): SourceAdapter => ({
 beforeEach(() => {
   localStorage.clear()
   adapters.miruro = fake('miruro', false)
+  adapters.justanime = fake('justanime', false)
   adapters.a = fake('a', false)
   adapters.b = fake('b', true)
   saveSettings({ sourceOrder: ['a', 'b'], lang: 'sub' })

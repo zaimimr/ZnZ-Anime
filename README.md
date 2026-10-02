@@ -113,7 +113,7 @@ TIZEN_PROFILE=<your-profile> pnpm --filter app package:tv   # builds and signs a
 ### Parts
 
 - `app/`: the TV app (Vite, React, TypeScript)
-- `worker/`: the server, a Cloudflare Worker for QR login, MAL token refresh and a stream proxy for sources that need a Referer header
+- `worker/`: the server, a Cloudflare Worker for QR login, MAL token refresh a stream proxy for sources that need a Referer header, and a relay for the JustAnime API
 
 ### Built-in server
 
