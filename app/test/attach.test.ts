@@ -73,6 +73,15 @@ describe('attachStream', () => {
     expect(el.onerror).toBeNull()
   })
 
+  it('reports a source the player cannot play as blocked', () => {
+    const el = document.createElement('video')
+    Object.defineProperty(el, 'error', { get: () => ({ code: 4 }) })
+    const onFatal = vi.fn()
+    attachStream(el, 'https://x/a.mp4', 'mp4', onFatal)
+    el.dispatchEvent(new Event('error'))
+    expect(onFatal).toHaveBeenCalledWith(true)
+  })
+
   it('destroys hls.js on cleanup', () => {
     const detach = attachStream(document.createElement('video'), 'https://x/a.m3u8', 'hls', vi.fn())
     detach()

@@ -13,9 +13,11 @@ vi.mock('../src/player/attach', () => ({
     return () => undefined
   },
 }))
+vi.mock('../src/aniskip', async (real) => ({ ...(await real<typeof import('../src/aniskip')>()), aniskip: vi.fn(async () => []) }))
 vi.mock('../src/sources/registry', () => ({ resolveFirst: vi.fn(), streamsWithFallback: vi.fn() }))
 
 import { details } from '../src/anilist/api'
+import { aniskip } from '../src/aniskip'
 import { RouterProvider } from '../src/nav/router'
 import { PlayerScreen } from '../src/screens/Player'
 import { resolveFirst, streamsWithFallback } from '../src/sources/registry'
@@ -41,10 +43,10 @@ function video(): HTMLVideoElement {
   return document.querySelector('video')!
 }
 
-function playAt(seconds: number) {
+function playAt(seconds: number, duration = 1440) {
   const el = video()
   Object.defineProperty(el, 'currentTime', { configurable: true, value: seconds, writable: true })
-  Object.defineProperty(el, 'duration', { configurable: true, value: 1440 })
+  Object.defineProperty(el, 'duration', { configurable: true, value: duration })
   fireEvent.playing(el)
   fireEvent.timeUpdate(el)
 }
@@ -92,6 +94,17 @@ describe('PlayerScreen stall recovery', () => {
     playAt(200)
     await stall()
     expect(urls()).toEqual(['https://alpha/a.m3u8', 'https://alpha/a.m3u8', 'https://alpha/a.m3u8'])
+  })
+
+  it('looks up skip times again for the length of the new server', async () => {
+    vi.mocked(details).mockResolvedValue({ ...info, idMal: 57334 })
+    await start()
+    playAt(10, 1477)
+    await waitFor(() => expect(aniskip).toHaveBeenLastCalledWith(57334, 1, 1477))
+    await act(async () => attaches[0].fail(true))
+    await waitFor(() => expect(attaches).toHaveLength(2))
+    playAt(10, 1437)
+    await waitFor(() => expect(aniskip).toHaveBeenLastCalledWith(57334, 1, 1437))
   })
 
   it('switches server right away when the provider is blocked', async () => {

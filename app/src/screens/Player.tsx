@@ -87,7 +87,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [switching, setSwitching] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [countdownFrom, setCountdownFrom] = useState(5)
-  const [matchedSkip, setMatchedSkip] = useState<SkipRange[]>([])
+  const [matchedSkip, setMatchedSkip] = useState<{ length: number; ranges: SkipRange[] }>({ length: 0, ranges: [] })
   const [undoSkip, setUndoSkip] = useState<SkipRange | null>(null)
   const [finished, setFinished] = useState(false)
   const [panel, setPanel] = useState<{ row: string; list: number | null } | null>(null)
@@ -159,7 +159,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   useEffect(() => {
     if (!malId || !skipLength) return
     let live = true
-    aniskip(malId, ep, skipLength).then((r) => live && setMatchedSkip(r)).catch(() => undefined)
+    aniskip(malId, ep, skipLength).then((r) => live && setMatchedSkip({ length: skipLength, ranges: r })).catch(() => undefined)
     return () => { live = false }
   }, [malId, ep, skipLength])
 
@@ -295,14 +295,14 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   useEffect(() => {
     const stream = loaded?.streams[index]
     const el = video.current
-    if (!stream || !el) return
+    if (!loaded || !stream || !el) return
     setBuffering(true)
-    const detach = attachStream(el, playableUrl(stream.url, stream.headers), stream.format, (blocked) => recover(blocked))
+    const detach = attachStream(el, playableUrl(stream.url, stream.headers, loaded.lang), stream.format, (blocked) => recover(blocked))
     void el.play().catch(() => undefined)
     return detach
   }, [loaded, index, attempt])
 
-  const ranges = useMemo(() => mergeSkips(stream?.skip ?? loaded?.episodes.find((e) => e.number === ep)?.skip, matchedSkip, time.total || Infinity), [stream, loaded, ep, matchedSkip, time.total])
+  const ranges = useMemo(() => mergeSkips(stream?.skip ?? loaded?.episodes.find((e) => e.number === ep)?.skip, matchedSkip.length === skipLength ? matchedSkip.ranges : [], time.total || Infinity), [stream, loaded, ep, matchedSkip, skipLength, time.total])
   const skip = activeSkip(ranges, time.now)
   const bar = useMemo(() => sections(ranges, time.total), [ranges, time.total])
 
@@ -538,7 +538,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     const total = knownDuration(el.duration)
     setTime({ now: el.currentTime, total, buffered: bufferedEnd(el) })
     if (reloadedAt.current !== null && el.currentTime > reloadedAt.current + 30) reloadedAt.current = null
-    if (!skipLength && total) setSkipLength(Math.round(total))
+    if (total && Math.abs(total - skipLength) > 3) setSkipLength(Math.round(total))
     const range = activeSkip(ranges, el.currentTime)
     const wanted = range?.verified && (range.kind === 'op' ? prefs.autoSkipIntro : prefs.autoSkipOutro && hasSceneAfterOutro(range, el.duration))
     if (range && wanted && skipped.current[range.kind] === 'pending') {

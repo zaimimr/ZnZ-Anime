@@ -1,6 +1,7 @@
 import Hls from 'hls.js'
 
 const STUCK_SECONDS = 12
+const SRC_NOT_SUPPORTED = 4
 
 export function nativePlayback(el: HTMLVideoElement, format: 'hls' | 'mp4'): boolean {
   if (format !== 'hls') return true
@@ -24,7 +25,7 @@ function watchStalls(el: HTMLVideoElement, onStall: () => void): () => void {
 export function attachStream(el: HTMLVideoElement, url: string, format: 'hls' | 'mp4', onFatal: (blocked: boolean) => void): () => void {
   const unwatch = watchStalls(el, () => onFatal(false))
   if (nativePlayback(el, format)) {
-    el.onerror = () => onFatal(false)
+    el.onerror = () => onFatal(el.error?.code === SRC_NOT_SUPPORTED)
     el.src = url
     return () => {
       unwatch()
