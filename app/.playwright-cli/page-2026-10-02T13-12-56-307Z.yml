@@ -1,0 +1,82 @@
+- generic [ref=f1e711]:
+  - generic:
+    - generic:
+      - generic: "Frieren: Beyond Journey’s End"
+      - generic: Episode 1 · The Journey's End
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic: Intro
+          - generic:
+            - generic: Outro
+      - generic:
+        - generic:
+          - text: 2:06
+          - generic: / 25:59
+        - generic: Kickassanime · Automatic · English
+      - generic:
+        - generic:
+          - generic: OK
+          - text: Pause
+        - generic:
+          - generic:
+            - img
+            - img
+          - text: Hold to scrub
+        - generic:
+          - generic:
+            - img
+          - text: Episodes
+        - generic:
+          - generic:
+            - img
+          - text: Settings
+        - generic:
+          - generic:
+            - img
+          - text: Exit
+  - generic [ref=f1e716]:
+    - heading "Playback" [level=2] [ref=f1e717]
+    - generic [ref=f1e718]:
+      - generic [ref=f1e720]:
+        - generic [ref=f1e721]: Audio
+        - generic [ref=f1e722]:
+          - text: English
+          - img [ref=f1e724]
+      - generic [ref=f1e726]:
+        - generic [ref=f1e727]:
+          - generic [ref=f1e728]: Server
+          - generic [ref=f1e729]:
+            - text: Kickassanime
+            - img [ref=f1e731]
+        - generic [ref=f1e763]:
+          - generic [ref=f1e764]:
+            - img [ref=f1e766]
+            - generic [ref=f1e768]:
+              - generic [ref=f1e769]: Kickassanime
+              - generic [ref=f1e770]: Adjusts to your connection
+          - generic [ref=f1e772]:
+            - generic [ref=f1e773]: Anikoto
+            - generic [ref=f1e774]: Adjusts to your connection
+          - generic [ref=f1e776]:
+            - generic [ref=f1e777]: Aniwaves
+            - generic [ref=f1e778]: Adjusts to your connection
+          - generic [ref=f1e780]:
+            - generic [ref=f1e781]: Icarus
+            - generic [ref=f1e782]: Adjusts to your connection
+      - generic [ref=f1e734]:
+        - generic [ref=f1e735]: Subtitles
+        - generic [ref=f1e736]:
+          - text: English
+          - img [ref=f1e738]
+      - generic [ref=f1e742]: Skip intros
+      - generic [ref=f1e747]: Skip outros
+      - generic [ref=f1e752]: Play next episode
+    - generic [ref=f1e755]:
+      - generic [ref=f1e756]:
+        - generic [ref=f1e757]: OK
+        - text: Choose
+      - generic [ref=f1e758]:
+        - img [ref=f1e760]
+        - text: Close list

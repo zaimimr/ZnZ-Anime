@@ -2,7 +2,7 @@ import { gzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeCatalog } from '../src/sources/miruro/decode'
 import { miruro } from '../src/sources/miruro'
-import { parseEpisodes, parseStreams, pickShow } from '../src/sources/miruro/parse'
+import { cleanLabel, parseEpisodes, parseStreams, pickShow } from '../src/sources/miruro/parse'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -112,5 +112,30 @@ describe('miruro adapter', () => {
   it('rejects an address that is not a miruro API', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } })))
     expect(await miruro.check('https://example.com')).toBe(false)
+  })
+
+  it('borrows subtitles from another server when a soft or dub stream has none, but not for burned-in subs', () => {
+    const data = { tracks: [
+      { track: 'sub', providers: [{ provider: 'pahe', subtitles: [], servers: [{ streams: [{ url: 'https://h/1.m3u8', format: 'hls' }] }] }] },
+      { track: 'dub', providers: [
+        { provider: 'kaa', subtitles: [], servers: [{ streams: [{ url: 'https://k/d.m3u8', format: 'hls' }] }] },
+        { provider: 'koto', subtitles: [{ file: 'https://s/dub-en.vtt', label: 'English' }], servers: [{ streams: [{ url: 'https://o/d.m3u8', format: 'hls' }] }] },
+      ] },
+      { track: 'ssub', providers: [{ provider: 'kaa', subtitles: [{ file: 'https://s/en.vtt', label: 'English', default: true }, { file: 'https://s/en2.vtt', label: 'English' }], servers: [{ headers: { Referer: 'https://kaa/' }, streams: [{ url: 'https://k/s.m3u8', format: 'hls' }] }] }] },
+    ] }
+    expect(parseStreams(data, 'sub').map((s) => s.subtitles.length)).toEqual([0, 1])
+    const dub = parseStreams(data, 'dub')
+    expect(dub[0].subtitles).toEqual([{ url: 'https://s/en.vtt', lang: 'und', label: 'English', headers: { Referer: 'https://kaa/' } }])
+    expect(dub[1].subtitles.map((s) => s.url)).toEqual(['https://s/dub-en.vtt'])
+  })
+})
+
+describe('cleanLabel', () => {
+  it('tidies subtitle names', () => {
+    expect(cleanLabel('English.vtt')).toBe('English')
+    expect(cleanLabel('Portuguese (- Portuguese(Brazil))')).toBe('Portuguese (Brazil)')
+    expect(cleanLabel('Spanish - Spanish Latin America.vtt')).toBe('Spanish (Latin America)')
+    expect(cleanLabel('Spanish (2)')).toBe('Spanish (2)')
+    expect(cleanLabel('Serbo-Croatian')).toBe('Serbo-Croatian')
   })
 })

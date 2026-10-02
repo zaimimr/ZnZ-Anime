@@ -1,0 +1,24 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - text: ZnZ
+        - generic [ref=e8]: Anime
+      - heading "Anime on the big screen" [level=1] [ref=e9]
+      - paragraph [ref=e10]: Pick how you want to keep track of what you watch. You can change this later in Settings.
+    - generic [ref=e11]:
+      - generic [ref=e12] [cursor=pointer]:
+        - generic [ref=e13]: AL
+        - generic [ref=e14]: AniList
+        - generic [ref=e15]: Use your AniList list and keep it updated as you watch
+      - generic [ref=e16] [cursor=pointer]:
+        - generic [ref=e17]: MAL
+        - generic [ref=e18]: MyAnimeList
+        - generic [ref=e19]: Use your MyAnimeList list and keep it updated as you watch
+      - generic [ref=e20] [cursor=pointer]:
+        - img [ref=e22]
+        - generic [ref=e25]: No account
+        - generic [ref=e26]: Keep your list on this TV. You can link an account later
+  - generic [ref=e28]:
+    - text: ZnZ
+    - generic [ref=e29]: Anime

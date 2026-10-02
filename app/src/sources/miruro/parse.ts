@@ -11,10 +11,21 @@ export function pickShow(data: unknown, anilistId: number): string | null {
 }
 
 
-function subtitles(raw: Raw[]): Subtitle[] {
+export function cleanLabel(label: string): string {
+  const base = label.replace(/\.vtt$/i, '').trim()
+  const parts = base.match(/^(.+?)(?:\s+-\s+|\s*\(-\s*)(.+?)\)?$/)
+  if (!parts) return base
+  const rest = parts[2].startsWith(parts[1]) ? parts[2].slice(parts[1].length) : parts[2]
+  const detail = rest.replace(/[()]/g, '').trim()
+  return detail ? `${parts[1]} (${detail})` : parts[1]
+}
+
+function subtitles(raw: Raw[], headers?: Record<string, string>): Subtitle[] {
+  const seen = new Set<string>()
   return raw
     .filter((s) => (s.format ?? 'vtt') === 'vtt' && (s.file ?? s.url))
-    .map((s) => ({ url: s.file ?? s.url, lang: s.language ?? s.lang ?? 'und', label: s.label ?? s.language ?? 'Subtitles', ...(s.default ? { default: true } : {}) }))
+    .map((s) => ({ url: s.file ?? s.url, lang: s.language ?? s.lang ?? 'und', label: cleanLabel(s.label ?? s.language ?? 'Subtitles'), ...(s.default ? { default: true } : {}), ...(headers ? { headers } : {}) }))
+    .filter((s) => !seen.has(s.label) && Boolean(seen.add(s.label)))
 }
 
 function skips(...sources: Raw[]): SkipRange[] | undefined {
@@ -42,9 +53,27 @@ export function parseEpisodes(data: unknown): Episode[] {
 
 const qualityValue = (q?: string) => Number(q?.match(/\d+/)?.[0] ?? 0)
 
+const serverHeaders = (server: Raw): Record<string, string> | undefined => (server.headers && Object.keys(server.headers).length ? server.headers : undefined)
+
+function subtitlePool(tracks: Raw[]): { provider: string; track: string; subtitles: Subtitle[] }[] {
+  return tracks.flatMap((track) =>
+    list(track.providers).flatMap((provider) =>
+      list(provider.servers).map((server) => ({ provider: provider.provider, track: track.track, subtitles: subtitles([...list(provider.subtitles), ...list(server.subtitles)], serverHeaders(server)) })),
+    ),
+  ).filter((entry) => entry.subtitles.length)
+}
+
+function borrowed(pool: ReturnType<typeof subtitlePool>, provider: string): Subtitle[] {
+  const rank = (e: { provider: string; track: string }) => (e.provider === provider ? 0 : 2) + (e.track === 'ssub' ? 0 : 1)
+  const best = [...pool].sort((a, b) => rank(a) - rank(b))[0]
+  return best ? best.subtitles.map((s) => { const copy = { ...s }; delete copy.default; return copy }) : []
+}
+
 export function parseStreams(data: unknown, lang: Lang): Stream[] {
   const wanted = lang === 'sub' ? ['sub', 'ssub'] : ['dub']
-  const tracks = list((data as Raw)?.tracks).filter((t) => wanted.includes(t.track)).sort((a, b) => wanted.indexOf(a.track) - wanted.indexOf(b.track))
+  const all = list((data as Raw)?.tracks)
+  const pool = subtitlePool(all)
+  const tracks = all.filter((t) => wanted.includes(t.track)).sort((a, b) => wanted.indexOf(a.track) - wanted.indexOf(b.track))
   return tracks.flatMap((track) =>
     list(track.providers).flatMap((provider) =>
       list(provider.servers).flatMap((server) =>
@@ -52,15 +81,16 @@ export function parseStreams(data: unknown, lang: Lang): Stream[] {
           .filter((s) => s.url && (s.format === 'hls' || s.format === 'mp4'))
           .sort((a, b) => qualityValue(b.quality) - qualityValue(a.quality))
           .map((s) => {
-            const headers = server.headers && Object.keys(server.headers).length ? server.headers : undefined
+            const headers = serverHeaders(server)
             const skip = skips(provider, server, s)
+            const own = subtitles([...list(provider.subtitles), ...list(server.subtitles)])
             return {
               provider: provider.provider,
               url: s.url,
               format: s.format,
               ...(s.quality ? { quality: s.quality } : {}),
               ...(headers ? { headers } : {}),
-              subtitles: subtitles([...list(provider.subtitles), ...list(server.subtitles)]),
+              subtitles: own.length || track.track === 'sub' ? own : borrowed(pool, provider.provider),
               ...(skip ? { skip } : {}),
               ...(provider.thumbnails?.vtt ? { thumbnails: provider.thumbnails.vtt } : {}),
             } as Stream

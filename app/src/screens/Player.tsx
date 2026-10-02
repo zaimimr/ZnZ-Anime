@@ -109,7 +109,6 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     panelRows.current?.querySelector('.focused')?.scrollIntoView({ block: 'nearest' })
   }, [panel])
   const [prefs, setPrefs] = useState<Settings>(getSettings())
-  const [subChoice, setSubChoice] = useState<string | null>(null)
   const marked = useRef(false)
   const skipped = useRef<Record<'op' | 'ed', 'pending' | 'skipped' | 'watching'>>({ op: 'pending', ed: 'pending' })
   const countdownFired = useRef(false)
@@ -175,7 +174,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   const stream = loaded?.streams[index]
   const subs = useMemo(() => stream?.subtitles ?? [], [stream])
-  const chosenSub = subChoice === 'off' ? null : (subs.find((s) => s.label === subChoice) ?? subs.find((s) => /^en/i.test(s.lang) || /english/i.test(s.label)) ?? subs.find((s) => s.default) ?? subs[0] ?? null)
+  const subChoice = prefs.subtitles
+  const chosenSub = subChoice === 'off' ? null : (subs.find((s) => s.label === subChoice) ?? (subChoice ? subs.find((s) => s.label.split(' (')[0] === subChoice.split(' (')[0]) : undefined) ?? subs.find((s) => /^en/i.test(s.lang) || /english/i.test(s.label)) ?? subs.find((s) => s.default) ?? subs[0] ?? null)
 
   useEffect(() => {
     const tracks = video.current?.textTracks
@@ -365,7 +365,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     if (otherState.of === loaded && otherState.ok) result.push({ label: 'Audio', value: audio[loaded.lang === 'sub' ? 0 : 1].label, options: audio, current: loaded.lang === 'sub' ? 0 : 1, langs: ['sub', 'dub'] })
     if (names.length > 1) result.push({ label: 'Server', value: capitalize(stream.provider), options: names.map((n) => ({ label: capitalize(n), detail: serverDetail(n) })), current: names.indexOf(stream.provider), streams: names.map((n) => loaded.streams.findIndex((s) => s.provider === n)) })
     if (qualities.length > 1) result.push({ label: 'Quality', value: qualities[qualityCurrent]?.label ?? 'Automatic', options: qualities, current: qualityCurrent, streams: qualities.map((q) => q.stream) })
-    if (subs.length) result.push({ label: 'Subtitles', value: chosenSub?.label ?? 'Off', options: [{ label: 'Off' }, ...subs.map((s) => ({ label: s.label }))], current: chosenSub ? subs.indexOf(chosenSub) + 1 : 0, pick: (i) => setSubChoice(i === 0 ? 'off' : subs[i - 1].label) })
+    if (subs.length) result.push({ label: 'Subtitles', value: chosenSub?.label ?? 'Off', options: [{ label: 'Off' }, ...subs.map((s) => ({ label: s.label }))], current: chosenSub ? subs.indexOf(chosenSub) + 1 : 0, pick: (i) => updatePrefs({ subtitles: i === 0 ? 'off' : subs[i - 1].label }) })
     result.push({ label: 'Skip intros', value: '', on: prefs.autoSkipIntro, toggle: () => updatePrefs({ autoSkipIntro: !prefs.autoSkipIntro }) })
     result.push({ label: 'Skip outros', value: '', on: prefs.autoSkipOutro, toggle: () => updatePrefs({ autoSkipOutro: !prefs.autoSkipOutro }) })
     if (loaded.episodes.some((e) => e.filler)) result.push({ label: 'Skip filler episodes', value: '', on: prefs.skipFiller, toggle: () => updatePrefs({ skipFiller: !prefs.skipFiller }) })
@@ -629,7 +629,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         autoPlay
       >
         {stream?.subtitles.map((sub) => (
-          <track key={sub.url} kind="subtitles" src={playableUrl(sub.url, stream.headers)} srcLang={sub.lang} label={sub.label} default={sub === chosenSub} />
+          <track key={sub.url} kind="subtitles" src={playableUrl(sub.url, sub.headers ?? stream.headers)} srcLang={sub.lang} label={sub.label} default={sub === chosenSub} />
         ))}
       </video>
 
