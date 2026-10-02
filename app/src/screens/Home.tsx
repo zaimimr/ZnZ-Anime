@@ -1,3 +1,4 @@
+import { setFocus } from '@noriginmedia/norigin-spatial-navigation'
 import { useEffect, useState } from 'react'
 import { type Shelf, type Taste, recommendations, shelves, taste, topInGenre } from '../anilist/api'
 import { cached } from '../cache'
@@ -93,6 +94,12 @@ export function Home() {
 
   const becauseRows = distinct(because.map((b) => b.cards), listed).map((cards, i) => ({ title: because[i].title, cards }))
 
+  const toFirstRow = (direction: string) => {
+    if (direction !== 'down') return true
+    setFocus(watching.length ? 'row-continue' : fresh.length ? 'row-new' : 'row-trending')
+    return false
+  }
+
   const continueLabel = (c: Card) => {
     const item = byId.get(c.id)
     if (!item) return undefined
@@ -108,10 +115,10 @@ export function Home() {
       {offline && <p className="muted">Offline or a service is down. Showing what is cached.</p>}
       <header style={{ display: 'flex', gap: 24, marginBottom: 32, alignItems: 'center' }}>
         <h1 className="brand"><img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />ZnZ<span>Anime</span></h1>
-        <Focusable className="btn" autoFocus onEnter={() => push({ name: 'list' })}>My list</Focusable>
-        <Focusable className="btn" onEnter={() => push({ name: 'schedule' })}>This week</Focusable>
-        <Focusable className="btn" onEnter={() => push({ name: 'search' })}>Search</Focusable>
-        <Focusable className="btn" onEnter={() => push({ name: 'settings' })}>Settings</Focusable>
+        <Focusable className="btn" autoFocus onArrowPress={toFirstRow} onEnter={() => push({ name: 'list' })}>My list</Focusable>
+        <Focusable className="btn" onArrowPress={toFirstRow} onEnter={() => push({ name: 'schedule' })}>This week</Focusable>
+        <Focusable className="btn" onArrowPress={toFirstRow} onEnter={() => push({ name: 'search' })}>Search</Focusable>
+        <Focusable className="btn" onArrowPress={toFirstRow} onEnter={() => push({ name: 'settings' })}>Settings</Focusable>
       </header>
       <PosterRow title="Continue watching" focusKey="row-continue" cards={watching.slice(0, 30).map((i) => i.card)} badge={continueLabel} />
       <PosterRow title="New episodes" focusKey="row-new" cards={fresh.map((i) => i.card)} badge={(c) => { const i = byId.get(c.id); return i ? progressLabel(i) : undefined }} />

@@ -6,3 +6,14 @@ export function recoverFocus(): boolean {
   setFocus(ROOT_FOCUS_KEY)
   return true
 }
+
+let claimed = false
+
+export function claimFocus(): void {
+  claimed = true
+  queueMicrotask(() => { claimed = false })
+}
+
+export function focusLayer(key: string): void {
+  if (!claimed) setFocus(key)
+}

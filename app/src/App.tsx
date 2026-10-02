@@ -1,5 +1,6 @@
-import { FocusContext, setFocus, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
+import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { lazy, type ReactNode, Suspense, useEffect, useState } from 'react'
+import { focusLayer } from './nav/focus'
 import { ActiveContext, type Route, RouterProvider, useRouter } from './nav/router'
 import { isOnboarded } from './onboarding'
 import { DetailsScreen } from './screens/Details'
@@ -22,7 +23,7 @@ const routeKey = (r: Route) => [r.name, 'id' in r ? r.id : '', 'ep' in r ? r.ep 
 function Layer({ index, active, children }: { index: number; active: boolean; children: ReactNode }) {
   const { ref, focusKey } = useFocusable<unknown, HTMLDivElement>({ focusKey: `layer-${index}`, focusable: active, saveLastFocusedChild: true, isFocusBoundary: true })
   useEffect(() => {
-    if (active) setFocus(focusKey)
+    if (active) focusLayer(focusKey)
   }, [active, focusKey])
   return (
     <ActiveContext.Provider value={active}>
