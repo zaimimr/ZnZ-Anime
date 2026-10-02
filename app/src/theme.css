@@ -143,6 +143,10 @@ html, body, #root { margin: 0; width: 1920px; height: 1080px; overflow: hidden; 
 .player .option.focused .tick { color: var(--ink); }
 .player .option.focused .option-detail { color: rgba(10, 12, 16, 0.64); }
 .player .panel-hints { margin: 24px 0 0 24px; }
+.player .picker { position: absolute; left: 0; right: 0; bottom: 0; padding: 200px 96px 56px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.78) 30%, rgba(0, 0, 0, 0.94)); animation: chrome-in 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+.player .picker h2 { margin: 0 0 12px; font-size: 36px; }
+.player .picker-track { display: flex; gap: 24px; padding: 12px 8px; overflow: hidden; }
+.episode .tag.now { background: var(--accent); color: #fff; }
 video::cue { font-size: 44px; background: rgba(0, 0, 0, 0.6); }
 .focusable.btn { display: inline-block; }
 

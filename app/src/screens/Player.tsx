@@ -16,6 +16,7 @@ import { resolveFirst, streamsWithFallback } from '../sources/registry'
 import type { Episode, SkipRange, SourceAdapter, SourceShow, Stream } from '../sources/types'
 import { saveEverywhere } from '../sync/writer'
 import type { Lang } from '../types'
+import { EpisodeCard } from '../ui/EpisodeCard'
 import { Icon } from '../ui/Icon'
 
 interface Loaded {
@@ -63,6 +64,7 @@ const format = (s: number) => {
 }
 
 const sectionLabels = { op: 'Intro', ed: 'Outro', main: '' }
+const PICKER_CARDS = 5
 
 function bufferedEnd(el: HTMLVideoElement): number {
   if (window.tizen) return 0
@@ -91,6 +93,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const [undoSkip, setUndoSkip] = useState<SkipRange | null>(null)
   const [finished, setFinished] = useState(false)
   const [panel, setPanel] = useState<{ row: string; list: number | null } | null>(null)
+  const [picker, setPicker] = useState<number | null>(null)
   const [scrub, setScrub] = useState<Scrub | null>(null)
   const [thumbState, setThumbs] = useState<{ src: string; cues: ThumbCue[] }>({ src: '', cues: [] })
   const [otherState, setOtherLang] = useState<{ of: Loaded | null; ok: boolean }>({ of: null, ok: false })
@@ -195,10 +198,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   }, [badge])
 
   useEffect(() => {
-    if (!overlay || paused || panel !== null || !loaded) return
+    if (!overlay || paused || panel !== null || picker !== null || !loaded) return
     const timer = setTimeout(() => setOverlay(false), 4000)
     return () => clearTimeout(timer)
-  }, [overlay, paused, panel, loaded, activity])
+  }, [overlay, paused, panel, picker, loaded, activity])
 
   const markWatched = useCallback(() => {
     const entry = loaded?.entry
@@ -446,6 +449,10 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
 
   useEffect(() => {
     setBackHandler(() => {
+      if (picker !== null) {
+        setPicker(null)
+        return true
+      }
       if (panel?.list != null) {
         setPanel({ row: panel.row, list: null })
         return true
@@ -471,7 +478,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       return false
     })
     return () => setBackHandler(null)
-  }, [panel, countdown, undoSkip, endScrub, setBackHandler])
+  }, [panel, picker, countdown, undoSkip, endScrub, setBackHandler])
 
   useEffect(() => {
     const choose = (row: Row, i: number) => {
@@ -489,7 +496,22 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
         e.stopPropagation()
         return back()
       }
-      if (panel) {
+      const episodes = loaded?.episodes ?? []
+      if (picker !== null) {
+        if (e.key === 'ArrowLeft') setPicker(Math.max(0, picker - 1))
+        else if (e.key === 'ArrowRight') setPicker(Math.min(episodes.length - 1, picker + 1))
+        else if (e.key === 'Enter') {
+          const chosen = episodes[picker].number
+          setPicker(null)
+          if (chosen !== ep) {
+            saveProgress()
+            replace({ name: 'player', id, ep: chosen })
+          }
+        }
+        else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') setPicker(null)
+        else return
+      }
+      else if (panel) {
         const focus = Math.max(0, rows.findIndex((r) => r.label === panel.row))
         const row = rows[focus]
         if (panel.list !== null && row?.options) {
@@ -522,7 +544,8 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
       else if (action === 'play') void el.play()
       else if (action === 'pause') el.pause()
       else if (e.key === 'ArrowDown') { if (rows.length) setPanel({ row: rows[0].label, list: null }) }
-      else if (e.key !== 'ArrowUp') return
+      else if (e.key === 'ArrowUp') { if (episodes.length > 1 && !scrubRef.current) setPicker(Math.max(0, episodes.findIndex((x) => x.number === ep))) }
+      else return
       e.preventDefault()
       e.stopPropagation()
       setOverlay(true)
@@ -530,7 +553,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [panel, rows, skip, countdown, playNext, back, loaded, moveScrub, endScrub, switchStream, switchLang])
+  }, [panel, picker, rows, skip, countdown, playNext, back, replace, id, ep, loaded, moveScrub, endScrub, switchStream, switchLang])
 
   const onTime = () => {
     const el = video.current
@@ -579,7 +602,7 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
   const title = loaded?.episodes.find((e) => e.number === ep)?.title
   const loading = !loaded || (buffering && !scrub) || switching
   const pct = (s: number) => (time.total ? (s / time.total) * 100 : 0)
-  const showPrompt = countdown === null && panel === null && !scrub
+  const showPrompt = countdown === null && panel === null && picker === null && !scrub
   const position = scrub?.target ?? time.now
   const scrubSection = scrub ? bar.find((b) => scrub.target >= b.start && scrub.target < b.end) : undefined
   const delta = scrub ? scrub.target - scrub.origin : 0
@@ -616,16 +639,16 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
           <span>{!loaded ? 'Finding a stream...' : switching ? 'Switching...' : 'Loading...'}</span>
         </div>
       )}
-      {paused && !loading && panel === null && !scrub && <div className="paused"><Icon name="pause" size={64} /></div>}
+      {paused && !loading && panel === null && picker === null && !scrub && <div className="paused"><Icon name="pause" size={64} /></div>}
       {badge && <div className="badge">{badge}</div>}
 
-      {loaded && (overlay || panel !== null || paused || scrub) && (
+      {loaded && (overlay || panel !== null || picker !== null || paused || scrub) && (
         <div className="chrome">
           <div className="top">
             <div className="show-title">{loaded.info.title}</div>
             <div className="muted">Episode {ep}{title ? ` · ${title}` : ''}</div>
           </div>
-          <div className="bottom">
+          {picker === null && <div className="bottom">
             <div className="scrubber">
               {scrub && (
                 <div className="preview" style={{ left: `clamp(180px, ${pct(scrub.target)}%, calc(100% - 180px))` }}>
@@ -668,14 +691,36 @@ export function PlayerScreen({ id, ep }: { id: number; ep: number }) {
                 <>
                   <span><kbd>OK</kbd> {paused ? 'Play' : 'Pause'}</span>
                   <span><kbd><Icon name="left" size={20} /><Icon name="right" size={20} /></kbd> Hold to scrub</span>
+                  {loaded.episodes.length > 1 && <span><kbd><Icon name="up" size={20} /></kbd> Episodes</span>}
                   <span><kbd><Icon name="down" size={20} /></kbd> Settings</span>
                   <span><kbd><Icon name="back" size={20} /></kbd> Exit</span>
                 </>
               )}
             </div>
-          </div>
+          </div>}
         </div>
       )}
+
+      {picker !== null && loaded && (() => {
+        const first = Math.max(0, Math.min(picker - 1, loaded.episodes.length - PICKER_CARDS))
+        const watched = loaded.entry?.progress ?? 0
+        return (
+          <div className="picker">
+            <h2>Episodes</h2>
+            <div className="picker-track">
+              {loaded.episodes.slice(first, first + PICKER_CARDS).map((e, i) => (
+                <div key={e.number} className={`episode focusable ${first + i === picker ? 'focused' : ''} ${e.number <= watched ? 'watched' : ''}`}>
+                  <EpisodeCard ep={e} done={e.number <= watched} position={e.number === ep ? time.now : getResume(id, e.number)} label={e.number === ep ? 'Now playing' : undefined} />
+                </div>
+              ))}
+            </div>
+            <div className="hints">
+              <span><kbd>OK</kbd> Play</span>
+              <span><kbd><Icon name="back" size={20} /></kbd> Close</span>
+            </div>
+          </div>
+        )
+      })()}
 
       {undoSkip && showPrompt && <div className="prompt quiet">{undoSkip.kind === 'op' ? 'Intro' : 'Outro'} skipped <span className="hint"><kbd><Icon name="back" size={20} /></kbd> Watch it</span></div>}
       {skip && !undoSkip && showPrompt && <div className="prompt"><kbd>OK</kbd> Skip {skip.kind === 'op' ? 'intro' : 'outro'}</div>}

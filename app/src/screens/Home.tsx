@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { recommendations, season } from '../anilist/api'
+import { type Shelf, type Taste, recommendations, shelves, taste, topInGenre } from '../anilist/api'
+import { cached } from '../cache'
 import { continueWatching, readHistory, unlistedItems } from '../history'
+import { distinct, favoriteGenres } from '../home'
 import { fetchLibrary } from '../library'
 import { newEpisodes, progressLabel } from '../list'
 import { useOnResume, useRouter } from '../nav/router'
@@ -10,17 +12,27 @@ import { Focusable } from '../ui/Focusable'
 import { PosterRow } from '../ui/PosterRow'
 
 const windowLabels: Record<TrendWindow, string> = { day: 'Day', week: 'Week', month: 'Month' }
+const HALF_DAY = 43_200_000
+const tasteMemo = new Map<string, Promise<Taste>>()
+
+function tasteFor(ids: number[]): Promise<Taste> {
+  const key = ids.join(',')
+  if (!tasteMemo.has(key)) tasteMemo.set(key, taste(ids).catch((e: unknown) => { tasteMemo.delete(key); throw e }))
+  return tasteMemo.get(key)!
+}
 
 export function Home() {
   const { push } = useRouter()
   const [list, setList] = useState<ListItem[]>([])
   const [history, setHistory] = useState(readHistory)
   const [unlisted, setUnlisted] = useState<ListItem[]>([])
-  const [airing, setAiring] = useState<Card[]>([])
+  const [shelf, setShelf] = useState<Partial<Record<Shelf, Card[]>>>({})
+  const [profile, setProfile] = useState<Taste>({ genres: {}, sequels: {} })
+  const [genreRows, setGenreRows] = useState<{ genre: string; cards: Card[] }[]>([])
   const [trendWindow, setTrendWindow] = useState<TrendWindow>('day')
   const [trending, setTrending] = useState<Card[]>([])
   const [offline, setOffline] = useState(false)
-  const [because, setBecause] = useState<{ title: string; cards: Card[] } | null>(null)
+  const [because, setBecause] = useState<{ title: string; cards: Card[] }[]>([])
 
   const fail = () => setOffline(true)
 
@@ -33,8 +45,11 @@ export function Home() {
         return unlistedItems(items, history).then(setUnlisted)
       })
       .catch(fail)
-    season().then(setAiring).catch(fail)
   }, [history])
+
+  useEffect(() => {
+    cached('home.shelves', HALF_DAY, () => shelves()).then(setShelf).catch(fail)
+  }, [])
 
   useEffect(() => {
     topTrending(trendWindow).then(setTrending).catch(fail)
@@ -45,17 +60,38 @@ export function Home() {
   const fresh = newEpisodes(list)
   const byId = new Map([...unlisted, ...list].map((i) => [i.card.id, i]))
   const played = new Map(history.map((h) => [h.id, h]))
-  const seed = [...list].filter((i) => i.entry.status === 'watching' || i.entry.status === 'rewatching' || i.entry.status === 'completed').sort((a, b) => b.updatedAt - a.updatedAt)[0]
-  const seedId = seed?.card.id
-  const seedTitle = seed?.card.title ?? ''
+  const recent = (i: ListItem) => Math.max(played.get(i.card.id)?.at ?? 0, i.updatedAt)
+  const completed = list.filter((i) => i.entry.status === 'completed').sort((a, b) => recent(b) - recent(a))
+  const seeds = [...new Map([...watching, ...completed].sort((a, b) => recent(b) - recent(a)).map((i) => [i.card.id, i])).values()]
+  const seedIds = seeds.slice(0, 50).map((i) => i.card.id).join(',')
+  const becauseSeeds = JSON.stringify(seeds.slice(0, 2).map((i) => ({ id: i.card.id, title: i.card.title })))
+  const listed = new Set(byId.keys())
+  const started = new Set([...byId.values()].filter((i) => i.entry.status !== 'planning').map((i) => i.card.id))
+  const genres = favoriteGenres(seedIds ? seedIds.split(',').map(Number) : [], profile.genres)
+  const genreKey = genres.join('|')
+  const sequels = distinct([completed.flatMap((i) => profile.sequels[i.card.id] ?? [])], listed)[0]
+  const [top, genreA, binge, genreB, gems, popular] = distinct([shelf.top ?? [], genreRows[0]?.cards ?? [], shelf.binge ?? [], genreRows[1]?.cards ?? [], shelf.gems ?? [], shelf.popular ?? []], started)
 
   useEffect(() => {
-    if (!seedId) return
-    const known = new Set(list.map((i) => i.card.id))
-    recommendations(seedId)
-      .then((cards) => setBecause({ title: seedTitle, cards: cards.filter((c) => !known.has(c.id)) }))
+    if (!seedIds) return
+    tasteFor(seedIds.split(',').map(Number)).then(setProfile).catch(() => undefined)
+  }, [seedIds])
+
+  useEffect(() => {
+    if (!genreKey) return
+    Promise.all(genreKey.split('|').map((genre) => cached(`home.genre.${genre}`, HALF_DAY, () => topInGenre(genre)).then((cards) => ({ genre, cards }))))
+      .then(setGenreRows)
       .catch(() => undefined)
-  }, [seedId, seedTitle, list])
+  }, [genreKey])
+
+  useEffect(() => {
+    const picks: { id: number; title: string }[] = JSON.parse(becauseSeeds)
+    if (!picks.length) return
+    Promise.all(picks.map((p) => recommendations(p.id).then((cards) => ({ title: p.title, cards })).catch(() => ({ title: p.title, cards: [] }))))
+      .then(setBecause)
+  }, [becauseSeeds])
+
+  const becauseRows = distinct(because.map((b) => b.cards), listed).map((cards, i) => ({ title: because[i].title, cards }))
 
   const continueLabel = (c: Card) => {
     const item = byId.get(c.id)
@@ -77,8 +113,8 @@ export function Home() {
         <Focusable className="btn" onEnter={() => push({ name: 'search' })}>Search</Focusable>
         <Focusable className="btn" onEnter={() => push({ name: 'settings' })}>Settings</Focusable>
       </header>
-      <PosterRow title="New episodes" focusKey="row-new" cards={fresh.map((i) => i.card)} badge={(c) => { const i = byId.get(c.id); return i ? progressLabel(i) : undefined }} />
       <PosterRow title="Continue watching" focusKey="row-continue" cards={watching.slice(0, 30).map((i) => i.card)} badge={continueLabel} />
+      <PosterRow title="New episodes" focusKey="row-new" cards={fresh.map((i) => i.card)} badge={(c) => { const i = byId.get(c.id); return i ? progressLabel(i) : undefined }} />
       <PosterRow
         title="Top Trending"
         focusKey="row-trending"
@@ -91,8 +127,17 @@ export function Home() {
           </div>
         }
       />
-      {because && <PosterRow title={`Because you watched ${because.title}`} focusKey="row-because" cards={because.cards} />}
-      <PosterRow title="Airing this season" focusKey="row-airing" cards={airing} />
+      <PosterRow title="Next seasons for you" focusKey="row-sequels" cards={sequels} />
+      {becauseRows[0] && <PosterRow title={`Because you watched ${becauseRows[0].title}`} focusKey="row-because" cards={becauseRows[0].cards} />}
+      <PosterRow title="Popular this season" focusKey="row-airing" cards={shelf.season ?? []} />
+      <PosterRow title="Highest rated" focusKey="row-top" cards={top} />
+      {becauseRows[1] && <PosterRow title={`Because you watched ${becauseRows[1].title}`} focusKey="row-because-2" cards={becauseRows[1].cards} />}
+      {genreRows[0] && <PosterRow title={`Best of ${genreRows[0].genre}`} focusKey="row-genre" cards={genreA} />}
+      <PosterRow title="Short binges" focusKey="row-binge" cards={binge} />
+      {genreRows[1] && <PosterRow title={`Best of ${genreRows[1].genre}`} focusKey="row-genre-2" cards={genreB} />}
+      <PosterRow title="Hidden gems" focusKey="row-gems" cards={gems} />
+      <PosterRow title="Most popular of all time" focusKey="row-popular" cards={popular} />
+      <PosterRow title="Coming next season" focusKey="row-upcoming" cards={shelf.upcoming ?? []} />
       <PosterRow title="Planning" focusKey="row-planning" cards={planning.slice(0, 30).map((i) => i.card)} />
     </div>
   )

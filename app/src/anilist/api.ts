@@ -185,13 +185,67 @@ function currentSeason(date = new Date()): { season: string; year: number } {
   return { season: seasons[date.getMonth()], year: date.getFullYear() }
 }
 
-export async function season(): Promise<Card[]> {
-  const { season: s, year } = currentSeason()
-  const data = await gql<{ Page: { media: MediaNode[] } }>(
-    `query ($season: MediaSeason, $year: Int) { Page(perPage: 30) { media(season: $season, seasonYear: $year, type: ANIME, isAdult: false, sort: POPULARITY_DESC) { ${CARD} } } }`,
-    { season: s, year },
+export type Shelf = 'season' | 'upcoming' | 'top' | 'binge' | 'gems' | 'popular'
+
+const shelfFilters: Record<Shelf, string> = {
+  season: 'season: $season, seasonYear: $year, sort: POPULARITY_DESC',
+  upcoming: 'season: $next, seasonYear: $nextYear, sort: POPULARITY_DESC',
+  top: 'format_in: [TV, MOVIE, ONA], sort: SCORE_DESC',
+  binge: 'format: TV, status: FINISHED, episodes_lesser: 14, averageScore_greater: 70, sort: SCORE_DESC',
+  gems: 'format_in: [TV, ONA], episodes_greater: 4, averageScore_greater: 74, popularity_greater: 3000, popularity_lesser: 50000, sort: SCORE_DESC',
+  popular: 'sort: POPULARITY_DESC',
+}
+
+const startersOnly: Shelf[] = ['top', 'binge', 'gems', 'popular']
+
+type ShelfMedia = MediaNode & { relations?: { edges: { relationType: string; node: { type: string } }[] } }
+
+const isStarter = (m: ShelfMedia) => !m.relations?.edges.some((e) => e.node.type === 'ANIME' && (e.relationType === 'PREQUEL' || e.relationType === 'PARENT'))
+
+export async function shelves(date = new Date()): Promise<Record<Shelf, Card[]>> {
+  const now = currentSeason(date)
+  const next = currentSeason(new Date(date.getFullYear(), date.getMonth() + 3, 1))
+  const pages = (Object.keys(shelfFilters) as Shelf[]).flatMap((shelf) => {
+    const starter = startersOnly.includes(shelf)
+    const fields = starter ? `${CARD} relations { edges { relationType node { type } } }` : CARD
+    return (starter ? [1, 2] : [1]).map((page) => `${shelf}${page}: Page(page: ${page}, perPage: ${starter ? 50 : 30}) { media(type: ANIME, isAdult: false, ${shelfFilters[shelf]}) { ${fields} } }`)
+  })
+  const data = await gql<Record<string, { media: ShelfMedia[] }>>(
+    `query ($season: MediaSeason, $year: Int, $next: MediaSeason, $nextYear: Int) { ${pages.join(' ')} }`,
+    { season: now.season, year: now.year, next: next.season, nextYear: next.year },
+    false,
   )
-  return data.Page.media.map(toCard)
+  const result = {} as Record<Shelf, Card[]>
+  for (const shelf of Object.keys(shelfFilters) as Shelf[]) {
+    const media = Object.entries(data).filter(([key]) => key.replace(/\d+$/, '') === shelf).flatMap(([, page]) => page.media)
+    result[shelf] = (startersOnly.includes(shelf) ? media.filter(isStarter) : media).map(toCard)
+  }
+  return result
+}
+
+export interface Taste {
+  genres: Record<number, string[]>
+  sequels: Record<number, Card[]>
+}
+
+export async function taste(ids: number[]): Promise<Taste> {
+  const result: Taste = { genres: {}, sequels: {} }
+  if (!ids.length) return result
+  const data = await gql<{ Page: { media: { id: number; genres: string[]; relations: { edges: RelationEdge[] } }[] } }>(
+    `query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { id genres relations { edges { relationType node { ${CARD} type status startDate { year month day } } } } } } }`,
+    { ids: ids.slice(0, 50) },
+  )
+  for (const m of data.Page.media) {
+    result.genres[m.id] = m.genres
+    result.sequels[m.id] = toRelated(m.relations.edges).filter((r) => r.relation === 'Sequel' && r.released)
+  }
+  return result
+}
+
+export async function topInGenre(genre: string): Promise<Card[]> {
+  const pages = [1, 2, 3].map((page) => `p${page}: Page(page: ${page}, perPage: 50) { media(type: ANIME, isAdult: false, genre: $genre, format_in: [TV, MOVIE, ONA], sort: SCORE_DESC) { ${CARD} relations { edges { relationType node { type } } } } }`)
+  const data = await gql<Record<string, { media: ShelfMedia[] }>>(`query ($genre: String) { ${pages.join(' ')} }`, { genre }, false)
+  return Object.values(data).flatMap((page) => page.media).filter(isStarter).map(toCard)
 }
 
 export async function mediaByIds(ids: number[]): Promise<Card[]> {

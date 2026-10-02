@@ -113,3 +113,17 @@ describe('PlayerScreen stall recovery', () => {
     await waitFor(() => expect(urls()).toEqual(['https://alpha/a.m3u8', 'https://beta/a.m3u8']))
   })
 })
+
+describe('PlayerScreen episode picker', () => {
+  it('opens on Up, moves with Left and Right, and closes on Down', async () => {
+    vi.mocked(resolveFirst).mockResolvedValueOnce({ adapter: adapter('one'), show: { source: 'one', id: '1' }, episodes: [{ number: 1 }, { number: 2, title: 'Second' }, { number: 3 }] }).mockResolvedValue(null)
+    render(<RouterProvider initial={{ name: 'player', id: 1, ep: 1 }}><PlayerScreen id={1} ep={1} /></RouterProvider>)
+    await waitFor(() => expect(attaches).toHaveLength(1))
+    fireEvent.keyDown(window, { key: 'ArrowUp' })
+    expect(screen.getByText('Now playing')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByText('E2 · Second').closest('.episode')!.className).toContain('focused')
+    fireEvent.keyDown(window, { key: 'ArrowDown' })
+    expect(screen.queryByText('Now playing')).toBeNull()
+  })
+})

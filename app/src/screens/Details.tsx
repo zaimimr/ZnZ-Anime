@@ -13,6 +13,7 @@ import type { Episode } from '../sources/types'
 import { NotOnMalError, removeEverywhere, saveEverywhere } from '../sync/writer'
 import type { Status } from '../types'
 import { Focusable } from '../ui/Focusable'
+import { EpisodeCard } from '../ui/EpisodeCard'
 import { Icon } from '../ui/Icon'
 import { PosterRow } from '../ui/PosterRow'
 
@@ -38,14 +39,7 @@ function EpisodeRow({ id, episodes, watched, target }: { id: number; episodes: E
             const done = ep.number <= watched
             return (
               <Focusable key={ep.number} focusKey={`ep-${ep.number}`} className={`episode ${done ? 'watched' : ''}`} onFocus={() => setCenter(start + i)} onEnter={() => push({ name: 'player', id, ep: ep.number })}>
-                <div className="thumb">
-                  {ep.thumbnail ? <img src={ep.thumbnail} alt="" loading="lazy" /> : <div className="blank">{ep.number}</div>}
-                  {done && <div className="check"><Icon name="check" size={24} /></div>}
-                  {ep.filler && <div className="tag">{ep.filler === 'filler' ? 'Filler' : 'Part filler'}</div>}
-                  {!done && position > 0 && ep.duration ? <div className="progress"><div style={{ width: `${Math.min(100, (position / ep.duration) * 100)}%` }} /></div> : null}
-                </div>
-                <span>E{ep.number}{ep.title ? ` · ${ep.title}` : ''}</span>
-                {ep.duration ? <span className="muted">{Math.round(ep.duration / 60)} min</span> : null}
+                <EpisodeCard ep={ep} done={done} position={position} />
               </Focusable>
             )
           })}
