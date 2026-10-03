@@ -1,4 +1,5 @@
 import { anilistCallbackPage, callback, cors, createPair, type Env, json, limited, login, poll, refreshMal, saveAnilistToken } from './pair'
+import { animex } from './animex'
 import { justanime } from './justanime'
 import { proxy } from './proxy'
 
@@ -11,6 +12,8 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (req.method === 'GET' && pathname === '/callback/anilist') return anilistCallbackPage()
   if (req.method === 'GET' && pathname === '/proxy') return proxy(req, env)
   if (req.method === 'GET' && pathname.startsWith('/justanime/')) return justanime(req)
+  if (req.method === 'POST' && pathname === '/animex/graphql') return animex(req)
+  if (req.method === 'GET' && pathname.startsWith('/animex/')) return animex(req)
   const [, head, param] = pathname.split('/')
   if (req.method === 'GET' && head === 'pair' && param) return (await limited(env.POLL_LIMIT, req)) ? json({ error: 'slow down' }, 429) : poll(env, param)
   if (req.method === 'GET' && head === 'login' && param) return login(req, env, param)

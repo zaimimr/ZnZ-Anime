@@ -11,6 +11,8 @@ export default defineConfig({
     proxy: {
       '/x/miruro': { target: 'https://www.miruro.to', changeOrigin: true, rewrite: (p) => p.replace(/^\/x\/miruro/, '') },
       '/x/justanime': { target: 'https://core.justanime.to', changeOrigin: true, headers: { origin: 'https://justanime.to', 'user-agent': 'Mozilla/5.0' }, rewrite: (p) => p.replace(/^\/x\/justanime/, '/api') },
+      '/x/animex/graphql': { target: 'https://graphql.animex.one', changeOrigin: true, headers: { origin: 'https://animex.one', referer: 'https://animex.one/', 'user-agent': 'Mozilla/5.0' }, rewrite: () => '/graphql' },
+      '/x/animex': { target: 'https://pp.animex.one', changeOrigin: true, headers: { origin: 'https://animex.one', referer: 'https://animex.one/', 'user-agent': 'Mozilla/5.0' }, rewrite: (p) => p.replace(/^\/x\/animex/, '/rest/api') },
       '/x/mal': { target: 'https://api.myanimelist.net', changeOrigin: true, rewrite: (p) => p.replace(/^\/x\/mal/, '') },
     },
   },

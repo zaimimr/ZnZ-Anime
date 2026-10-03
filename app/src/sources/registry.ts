@@ -1,10 +1,11 @@
 import { getSettings } from '../settings'
 import type { Lang } from '../types'
+import { animex } from './animex'
 import { justanime } from './justanime'
 import { miruro } from './miruro'
 import type { Episode, MediaRef, SourceAdapter, SourceShow, Stream } from './types'
 
-export const adapters: Record<string, SourceAdapter> = { miruro, justanime }
+export const adapters: Record<string, SourceAdapter> = { miruro, justanime, animex }
 
 export function orderedAdapters(): SourceAdapter[] {
   const ordered = getSettings().sourceOrder.map((id) => adapters[id]).filter(Boolean)

@@ -17,6 +17,7 @@ beforeEach(() => {
   localStorage.clear()
   adapters.miruro = fake('miruro', false)
   adapters.justanime = fake('justanime', false)
+  adapters.animex = fake('animex', false)
   adapters.a = fake('a', false)
   adapters.b = fake('b', true)
   saveSettings({ sourceOrder: ['a', 'b'], lang: 'sub' })
